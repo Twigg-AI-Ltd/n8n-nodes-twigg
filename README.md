@@ -84,6 +84,9 @@ Operations on the conversations the Chat Model keeps, addressed by the same Chat
 To give users a `/reset` command, add an IF on the text and a **Twigg → Chat → Delete** node with the
 same Chat ID.
 
+`examples/agent-with-calculator.json` is an importable workflow (Manual Trigger → AI Agent → Twigg Chat
+Model + Calculator tool). Run it twice with different messages to see the second run remember the first.
+
 ## Errors
 
 API failures surface with Twigg's error code and hint, for example `payment_required` (top up in the
