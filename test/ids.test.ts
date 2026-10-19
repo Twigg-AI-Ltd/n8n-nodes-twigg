@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	buildIdempotencyKey,
+	chatTitleFor,
 	encodeExternalId,
 	externalIdProblem,
 	hashExternalId,
@@ -52,6 +53,16 @@ describe('external ids', () => {
 			id: hashExternalId('has space/slash'),
 			hashed: true,
 		});
+	});
+});
+
+describe('chat titles', () => {
+	it('fits the 50-character limit', () => {
+		expect(chatTitleFor('wa:+447700900123')).toBe('wa:+447700900123');
+		expect(chatTitleFor('  ')).toBeUndefined();
+		const long = 'x'.repeat(80);
+		expect(chatTitleFor(long)).toHaveLength(50);
+		expect(chatTitleFor(long)?.endsWith('\u2026')).toBe(true);
 	});
 });
 

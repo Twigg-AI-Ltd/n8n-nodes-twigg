@@ -45,6 +45,15 @@ export function resolveExternalId(raw: string, hash: boolean): { id: string; has
 	return { id: trimmed, hashed: false };
 }
 
+/** Chat titles are 1-50 characters in the Twigg spec; a raw chat id is shown as the title when it fits. */
+export const CHAT_TITLE_MAX_LENGTH = 50;
+
+export function chatTitleFor(raw: string): string | undefined {
+	const trimmed = raw.trim();
+	if (trimmed === '') return undefined;
+	return trimmed.length <= CHAT_TITLE_MAX_LENGTH ? trimmed : `${trimmed.slice(0, CHAT_TITLE_MAX_LENGTH - 1)}…`;
+}
+
 /** `encodeURIComponent` already covers `+` → `%2B` and every character the spec forbids. */
 export function encodeExternalId(id: string): string {
 	return encodeURIComponent(id);

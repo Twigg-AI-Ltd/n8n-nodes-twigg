@@ -11,7 +11,7 @@ import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import { TwiggChatModel } from './TwiggChatModel';
 import { DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
-import { resolveExternalId } from '../shared/ids';
+import { chatTitleFor, resolveExternalId } from '../shared/ids';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
 import type { ReasoningEffort } from '../shared/types';
 
@@ -212,7 +212,10 @@ export class LmChatTwigg implements INodeType {
 
 		const chat: { namespace?: string; title?: string } = {};
 		if (options.namespace && options.namespace.trim() !== '') chat.namespace = options.namespace.trim();
-		if (!hashed) chat.title = rawChatId;
+		if (!hashed) {
+			const title = chatTitleFor(rawChatId);
+			if (title !== undefined) chat.title = title;
+		}
 
 		const pendingWindow = options.pendingToolCallWindow ?? 60;
 		const chatModel = new TwiggChatModel(
