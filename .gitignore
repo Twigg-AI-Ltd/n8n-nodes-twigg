@@ -1,0 +1,4 @@
+dist
+node_modules
+.n8n-dev
+*.tgz

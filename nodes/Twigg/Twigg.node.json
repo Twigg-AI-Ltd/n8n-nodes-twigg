@@ -1,0 +1,19 @@
+{
+	"node": "n8n-nodes-twigg.twigg",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Development"],
+	"resources": {
+		"credentialDocumentation": [
+			{
+				"url": "https://twigg.ai/docs/quickstart"
+			}
+		],
+		"primaryDocumentation": [
+			{
+				"url": "https://github.com/Twigg-AI-Ltd/n8n-nodes-twigg#readme"
+			}
+		]
+	},
+	"alias": ["twigg", "chat", "history", "conversation"]
+}

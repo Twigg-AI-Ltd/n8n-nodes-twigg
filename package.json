@@ -1,0 +1,72 @@
+{
+	"name": "n8n-nodes-twigg",
+	"version": "0.1.0",
+	"description": "Twigg Chat Model for n8n AI Agents: server-side conversation memory, context management and any model, with no Memory node",
+	"license": "MIT",
+	"homepage": "https://twigg.ai",
+	"keywords": [
+		"n8n-community-node-package",
+		"twigg",
+		"ai",
+		"llm",
+		"chat-model",
+		"memory",
+		"ai-agent"
+	],
+	"author": {
+		"name": "Twigg AI Ltd",
+		"email": "hello@twigg.ai"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Twigg-AI-Ltd/n8n-nodes-twigg.git"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "n8n-node build",
+		"build:watch": "tsc --watch",
+		"dev": "n8n-node dev",
+		"lint": "n8n-node lint",
+		"lint:fix": "n8n-node lint --fix",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"release": "n8n-node release",
+		"prepublishOnly": "n8n-node prerelease"
+	},
+	"files": [
+		"dist",
+		"!dist/tsconfig.tsbuildinfo"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"aiNodeSdkVersion": 1,
+		"strict": true,
+		"credentials": [
+			"dist/credentials/TwiggApi.credentials.js"
+		],
+		"nodes": [
+			"dist/nodes/LmChatTwigg/LmChatTwigg.node.js",
+			"dist/nodes/Twigg/Twigg.node.js"
+		]
+	},
+	"devDependencies": {
+		"@n8n/ai-node-sdk": "*",
+		"@n8n/node-cli": "*",
+		"eslint": "9.39.4",
+		"n8n-workflow": "*",
+		"prettier": "3.8.3",
+		"release-it": "20.2.0",
+		"typescript": "5.9.3",
+		"vitest": "^3.2.4"
+	},
+	"peerDependencies": {
+		"@n8n/ai-node-sdk": "*",
+		"n8n-workflow": "*"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true
+	}
+}
