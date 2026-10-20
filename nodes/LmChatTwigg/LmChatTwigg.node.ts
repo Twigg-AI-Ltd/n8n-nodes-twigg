@@ -6,12 +6,11 @@ import { TwiggChatModel } from './TwiggChatModel';
 import { resolveChatId } from '../shared/chat-id';
 import { DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
 import { chatTitleFor, resolveExternalId } from '../shared/ids';
-import { DEFAULT_MODEL, loadModelOptions } from '../shared/models';
+import { DEFAULT_MODEL, DEFAULT_NAMESPACE, loadModelOptions } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
 import type { ReasoningEffort } from '../shared/types';
 
 type ModelOptions = {
-	namespace?: string;
 	hashChatId?: boolean;
 	onRefusal?: 'error' | 'returnText';
 	maxTokens?: number;
@@ -87,6 +86,14 @@ export class LmChatTwigg implements INodeType {
 				hint: 'The default reads the sessionId field that the Chat Trigger node outputs',
 			},
 			{
+				displayName: 'Namespace',
+				name: 'namespace',
+				type: 'string',
+				default: DEFAULT_NAMESPACE,
+				description:
+					'The Twigg namespace new chats are created in. Namespaces carry their own instructions, context budgets and retention, configured in the Twigg console. Lowercase letters, digits, - and _, with / between levels. A chat stays in the namespace it was created in: a different value here is refused for existing chats, and empty means any.',
+			},
+			{
 				displayName: 'Options',
 				name: 'options',
 				placeholder: 'Add Option',
@@ -117,15 +124,6 @@ export class LmChatTwigg implements INodeType {
 						type: 'number',
 						default: -1,
 						description: 'The maximum number of tokens the model may generate per reply. -1 uses the model maximum.',
-					},
-					{
-						displayName: 'Namespace',
-						name: 'namespace',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. support-bot',
-						description:
-							'The Twigg namespace new chats are created in. Namespaces carry their own instructions, tools and context budgets, configured in the Twigg console. Lowercase letters, digits, - and _, with / between levels.',
 					},
 					{
 						displayName: 'On Refusal',
@@ -212,7 +210,8 @@ export class LmChatTwigg implements INodeType {
 		);
 
 		const chat: { namespace?: string; title?: string } = {};
-		if (options.namespace && options.namespace.trim() !== '') chat.namespace = options.namespace.trim();
+		const namespace = String(this.getNodeParameter('namespace', itemIndex, DEFAULT_NAMESPACE) ?? '').trim();
+		if (namespace !== '') chat.namespace = namespace;
 		if (!hashed) {
 			const title = chatTitleFor(rawChatId);
 			if (title !== undefined) chat.title = title;

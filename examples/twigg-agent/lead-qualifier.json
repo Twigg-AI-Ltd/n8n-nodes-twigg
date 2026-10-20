@@ -31,9 +31,9 @@
         "model": "claude-haiku-5-5",
         "text": "={{ $json.body.text }}",
         "chatId": "={{ $('Incoming WhatsApp message').item.json.body.from }}",
+        "namespace": "lead-qualifier",
         "systemMessage": "You qualify inbound sales leads for Twigg Analytics over WhatsApp. Keep every reply under 40 words. Find out, one question at a time: the person's name, company, team size and monthly budget. When you have all four, offer a demo using check_availability, and once they pick a slot call save_lead with everything you collected. Do not ask for anything they already told you.",
         "options": {
-          "namespace": "lead-qualifier",
           "hashChatId": true
         }
       }

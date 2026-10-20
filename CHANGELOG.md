@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- History import from n8n Memory nodes: **Import History From Old Memory** on the Twigg AI Agent moves each conversation over on its first message; **Twigg → Chat → Import History** moves them in bulk. Waits on the Twigg import endpoint, which is not live yet: until then the agent answers without importing.
+- **Namespace** is now a visible setting on the Twigg AI Agent and Twigg Chat Model, defaulting to `n8n`.
+- Model prices in the model list read `$0.105` instead of `0.105000000000`.
 - **Twigg AI Agent** node: an AI agent with a Tool input and no Chat Model or Memory input. Twigg runs the model and keeps the conversation; n8n runs the tool nodes. Examples in `examples/twigg-agent/`.
 - Tools attached to the Agent now reach the model with their real input schema. n8n's own tools (Calculator, HTTP Request, ...) were sent as unconverted Zod objects.
 - Example workflows for a support bot, a WhatsApp lead qualifier and a Telegram bot, each with a classic Memory-node version for comparison, and recommended Twigg settings in the README.

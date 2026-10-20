@@ -47,24 +47,20 @@ def code_tool(name, tool_name, description, schema, js, position):
 
 
 def twigg_model(position, chat_id, namespace, hash_id=False):
-    options = {"namespace": namespace}
-    if hash_id:
-        options["hashChatId"] = True
     return node("Twigg Chat Model", f"{TWIGG_PREFIX}.lmChatTwigg", 1, position, {
         "model": "claude-haiku-5-5",
         "chatId": chat_id,
-        "options": options,
+        "namespace": namespace,
+        "options": {"hashChatId": True} if hash_id else {},
     })
 
 
 def agent_node(variant, name, position, text, system, chat_id, namespace, hash_id=False):
     """The agent: Twigg AI Agent for the twigg-agent variant, n8n's AI Agent otherwise."""
     if variant == "agent":
-        options = {"namespace": namespace}
-        if hash_id:
-            options["hashChatId"] = True
         return node(name, f"{TWIGG_PREFIX}.twiggAgent", 1, position, {
-            "model": "claude-haiku-5-5", "text": text, "chatId": chat_id, "systemMessage": system, "options": options})
+            "model": "claude-haiku-5-5", "text": text, "chatId": chat_id, "namespace": namespace,
+            "systemMessage": system, "options": {"hashChatId": True} if hash_id else {}})
     params = {"options": {"systemMessage": system}}
     if text != "={{ $json.chatInput }}":
         params.update({"promptType": "define", "text": text})

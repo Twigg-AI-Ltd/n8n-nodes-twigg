@@ -64,10 +64,9 @@
         "model": "claude-haiku-5-5",
         "text": "={{ $json.message.text }}",
         "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "namespace": "telegram-bot",
         "systemMessage": "You are a helpful personal assistant on Telegram. Keep replies short. Remember what the user tells you about themselves and use it.",
-        "options": {
-          "namespace": "telegram-bot"
-        }
+        "options": {}
       }
     },
     {

@@ -2,27 +2,27 @@ import type {
 	EngineRequest,
 	EngineResponse,
 	IExecuteFunctions,
-	INode,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	JsonObject,
 } from 'n8n-workflow';
-import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
+import type { AgentTool } from '../shared/agent-tools';
 import { collectTools } from '../shared/agent-tools';
 import type { AgentItemState, ToolActionMetadata } from '../shared/agent-turns';
 import { readMetadata, replyText, toolCallActions, toolResultsFor } from '../shared/agent-turns';
 import { resolveChatId } from '../shared/chat-id';
 import { DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
-import { TwiggApiError, TwiggRefusalError } from '../shared/errors';
+import { TwiggRefusalError } from '../shared/errors';
+import { chatIsEmpty, importFromMemory, isImportUnavailable } from '../shared/history-import';
 import { buildIdempotencyKey, chatTitleFor, resolveExternalId } from '../shared/ids';
-import { DEFAULT_MODEL, loadModelOptions } from '../shared/models';
+import { DEFAULT_MODEL, DEFAULT_NAMESPACE, loadModelOptions } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
+import { toNodeError } from '../shared/node-errors';
 import type { CreateResponseRequest, ReasoningEffort, SubmittedPart } from '../shared/types';
 
 type AgentOptions = {
-	namespace?: string;
 	hashChatId?: boolean;
 	maxIterations?: number;
 	maxTokens?: number;
@@ -46,10 +46,12 @@ export class TwiggAgent implements INodeType {
 		defaults: {
 			name: 'Twigg AI Agent',
 		},
-		inputs: [
-			NodeConnectionTypes.Main,
-			{ type: NodeConnectionTypes.AiTool, displayName: 'Tool', required: false },
-		],
+		// The Memory (Import) input only exists while "Import History From Old Memory" is on.
+		inputs: `={{ ((importHistory) => [
+			'main',
+			{ type: 'ai_tool', displayName: 'Tool', required: false },
+			...(importHistory ? [{ type: 'ai_memory', displayName: 'Memory (Import)', required: true, maxConnections: 1 }] : []),
+		])($parameter.importHistory) }}`,
 		outputs: [NodeConnectionTypes.Main],
 		usableAsTool: true,
 		credentials: [
@@ -98,12 +100,37 @@ export class TwiggAgent implements INodeType {
 				hint: 'The default reads the sessionId field that the Chat Trigger node outputs',
 			},
 			{
+				displayName: 'Namespace',
+				name: 'namespace',
+				type: 'string',
+				default: DEFAULT_NAMESPACE,
+				description:
+					'The Twigg namespace new chats are created in. Namespaces carry their own instructions, context budgets and retention, configured in the Twigg console. Lowercase letters, digits, - and _, with / between levels. A chat stays in the namespace it was created in: a different value here is refused for existing chats, and empty means any.',
+			},
+			{
 				displayName: 'System Message',
 				name: 'systemMessage',
 				type: 'string',
 				default: 'You are a helpful assistant.',
 				typeOptions: { rows: 4 },
 				description: 'Instructions sent with every message. Not stored as conversation history, so it can be changed at any time.',
+			},
+			{
+				displayName: 'Import History From Old Memory',
+				name: 'importHistory',
+				type: 'boolean',
+				default: false,
+				noDataExpression: true,
+				description:
+					'Whether to bring over conversations from the Memory node your agent used before. Adds a Memory (Import) input: connect the old Memory node to it.',
+			},
+			{
+				displayName:
+					'Each conversation is imported once, the first time it gets a message here: its full history is read from the connected Memory node and stored on Twigg. The old memory is only read, never changed. Once your active conversations have moved over, turn this off and delete the Memory node.',
+				name: 'importNotice',
+				type: 'notice',
+				default: '',
+				displayOptions: { show: { importHistory: [true] } },
 			},
 			{
 				displayName: 'Options',
@@ -144,15 +171,6 @@ export class TwiggAgent implements INodeType {
 						type: 'number',
 						default: -1,
 						description: 'The maximum number of tokens the model may generate per reply. -1 uses the model maximum.',
-					},
-					{
-						displayName: 'Namespace',
-						name: 'namespace',
-						type: 'string',
-						default: '',
-						placeholder: 'e.g. support-bot',
-						description:
-							'The Twigg namespace new chats are created in. Namespaces carry their own instructions, tools, context budgets and retention, configured in the Twigg console. Lowercase letters, digits, - and _, with / between levels.',
 					},
 					{
 						displayName: 'On Refusal',
@@ -239,24 +257,28 @@ export class TwiggAgent implements INodeType {
 			const current: AgentItemState = state[itemIndex] ?? { turns: 0 };
 			if (current.output !== undefined || current.error !== undefined) continue;
 
-			let input: SubmittedPart[];
-			if (!resumed) {
-				const text = String(this.getNodeParameter('text', itemIndex, '') ?? '');
-				if (text.trim() === '') {
-					throw new NodeOperationError(this.getNode(), 'The prompt is empty', {
-						description:
-							"Set 'Prompt (User Message)' to the message to answer, such as {{ $json.chatInput }} from a Chat Trigger.",
-						itemIndex,
-					});
-				}
-				input = [{ type: 'prompt', text }];
-			} else {
-				input = [...(current.pendingResults ?? []), ...toolResultsFor(response, itemIndex)];
-				if (input.length === 0) continue;
-			}
-
 			try {
-				const result = await runTurns(this, itemIndex, current, input, credentials.baseUrl!);
+				let input: SubmittedPart[];
+				if (!resumed) {
+					const text = String(this.getNodeParameter('text', itemIndex, '') ?? '');
+					if (text.trim() === '') {
+						throw new NodeOperationError(this.getNode(), 'The prompt is empty', {
+							description:
+								"Set 'Prompt (User Message)' to the message to answer, such as {{ $json.chatInput }} from a Chat Trigger.",
+							itemIndex,
+						});
+					}
+					input = [{ type: 'prompt', text }];
+				} else {
+					input = [...(current.pendingResults ?? []), ...toolResultsFor(response, itemIndex)];
+					if (input.length === 0) continue;
+				}
+
+				const item = await prepareItem(this, itemIndex, credentials.baseUrl!);
+				if (!resumed && this.getNodeParameter('importHistory', itemIndex, false) === true) {
+					await importOldHistory(this, item, itemIndex);
+				}
+				const result = await runTurns(this, item, itemIndex, current, input);
 				state[itemIndex] = result.state;
 				actions.push(...result.actions);
 			} catch (error) {
@@ -279,39 +301,81 @@ export class TwiggAgent implements INodeType {
 	}
 }
 
+/** What one item's turns need: its settings, its chat on Twigg, a client and the connected tools. */
+type ItemContext = {
+	options: AgentOptions;
+	model: string;
+	systemMessage: string;
+	externalId: string;
+	chat: { namespace?: string; title?: string };
+	client: TwiggClient;
+	tools: AgentTool[];
+};
+
+async function prepareItem(ctx: IExecuteFunctions, itemIndex: number, baseUrl: string): Promise<ItemContext> {
+	const options = ctx.getNodeParameter('options', itemIndex, {}) as AgentOptions;
+	const rawChatId = resolveChatId(ctx, itemIndex);
+	const { id: externalId, hashed } = resolveExternalId(rawChatId, options.hashChatId === true);
+	const chat: { namespace?: string; title?: string } = {};
+	const namespace = String(ctx.getNodeParameter('namespace', itemIndex, DEFAULT_NAMESPACE) ?? '').trim();
+	if (namespace !== '') chat.namespace = namespace;
+	if (!hashed) {
+		const title = chatTitleFor(rawChatId);
+		if (title !== undefined) chat.title = title;
+	}
+	return {
+		options,
+		model: ctx.getNodeParameter('model', itemIndex) as string,
+		systemMessage: String(ctx.getNodeParameter('systemMessage', itemIndex, '') ?? ''),
+		externalId,
+		chat,
+		client: new TwiggClient(
+			{
+				request: makeN8nRequest(ctx, baseUrl, options.timeout ?? DEFAULT_TIMEOUT_MS),
+				log: (message, meta) => ctx.logger.debug(message, meta),
+			},
+			{ ...DEFAULT_RETRY_POLICY, waitBudgetSeconds: options.waitBudget ?? DEFAULT_RETRY_POLICY.waitBudgetSeconds },
+		),
+		tools: await collectTools(ctx, itemIndex),
+	};
+}
+
+/**
+ * The lazy import: before a chat's first message on Twigg, copy its history from the old Memory
+ * node. Never stops the message from being answered: problems are logged and the turn goes ahead.
+ */
+async function importOldHistory(ctx: IExecuteFunctions, item: ItemContext, itemIndex: number): Promise<void> {
+	try {
+		if (!(await chatIsEmpty(item.client, item.externalId))) return;
+		const memory = await ctx.getInputConnectionData(NodeConnectionTypes.AiMemory, itemIndex);
+		if (!memory) {
+			ctx.logger.warn('Twigg AI Agent: "Import History From Old Memory" is on but no Memory node is connected');
+			return;
+		}
+		const outcome = await importFromMemory(item.client, item.externalId, item.chat, memory);
+		ctx.logger.debug('Twigg AI Agent: history import', { chat: item.externalId, status: outcome.status, parts: outcome.parts });
+	} catch (error) {
+		if (isImportUnavailable(error)) {
+			ctx.logger.warn('Twigg AI Agent: history import is not available on this Twigg API yet; answering without it');
+			return;
+		}
+		ctx.logger.warn(`Twigg AI Agent: history import failed, answering without it: ${(error as Error).message}`);
+	}
+}
+
 /**
  * Submits one item's input to Twigg and keeps going while it can do so without the engine:
  * until the model either answers or calls tools the engine has to run.
  */
 async function runTurns(
 	ctx: IExecuteFunctions,
+	item: ItemContext,
 	itemIndex: number,
 	previous: AgentItemState,
 	firstInput: SubmittedPart[],
-	baseUrl: string,
 ): Promise<{ state: AgentItemState; actions: EngineRequest<ToolActionMetadata>['actions'] }> {
-	const options = ctx.getNodeParameter('options', itemIndex, {}) as AgentOptions;
-	const model = ctx.getNodeParameter('model', itemIndex) as string;
-	const systemMessage = String(ctx.getNodeParameter('systemMessage', itemIndex, '') ?? '');
+	const { options, tools } = item;
 	const maxIterations = options.maxIterations ?? 10;
-
-	const rawChatId = resolveChatId(ctx, itemIndex);
-	const { id: externalId, hashed } = resolveExternalId(rawChatId, options.hashChatId === true);
-	const chat: { namespace?: string; title?: string } = {};
-	if (options.namespace && options.namespace.trim() !== '') chat.namespace = options.namespace.trim();
-	if (!hashed) {
-		const title = chatTitleFor(rawChatId);
-		if (title !== undefined) chat.title = title;
-	}
-
-	const client = new TwiggClient(
-		{
-			request: makeN8nRequest(ctx, baseUrl, options.timeout ?? DEFAULT_TIMEOUT_MS),
-			log: (message, meta) => ctx.logger.debug(message, meta),
-		},
-		{ ...DEFAULT_RETRY_POLICY, waitBudgetSeconds: options.waitBudget ?? DEFAULT_RETRY_POLICY.waitBudgetSeconds },
-	);
-	const tools = await collectTools(ctx, itemIndex);
 	const pendingWindow = options.pendingToolCallWindow ?? 60;
 
 	let turns = previous.turns;
@@ -324,27 +388,27 @@ async function runTurns(
 				itemIndex,
 			});
 		}
-		const request: CreateResponseRequest = { model, input, stream: false };
-		if (systemMessage.trim() !== '') request.system = systemMessage;
+		const request: CreateResponseRequest = { model: item.model, input, stream: false };
+		if (item.systemMessage.trim() !== '') request.system = item.systemMessage;
 		if (tools.length > 0) request.tools = tools.map((tool) => tool.definition);
 		if (options.maxTokens !== undefined && options.maxTokens > 0) request.max_tokens = options.maxTokens;
 		if (options.reasoningEffort && options.reasoningEffort !== 'default') request.reasoning_effort = options.reasoningEffort;
 		if (pendingWindow > 0) request.wait_for_pending_tool_calls = pendingWindow;
-		if (Object.keys(chat).length > 0) request.chat = chat;
+		if (Object.keys(item.chat).length > 0) request.chat = item.chat;
 		// Same execution, node, item and turn => same key => a retry replays the stored result.
 		request.idempotency_key = buildIdempotencyKey([
 			ctx.getExecutionId(),
 			ctx.getNode().id,
 			itemIndex,
 			turns,
-			externalId,
+			item.externalId,
 			request.model,
 			request.system ?? null,
 			request.tools ?? null,
 			input,
 		]);
 
-		const body = await client.createResponseByExternalId(externalId, request);
+		const body = await item.client.createResponseByExternalId(item.externalId, request);
 		turns += 1;
 
 		if (body.stop_reason === 'refusal' && options.onRefusal !== 'returnText') {
@@ -363,18 +427,4 @@ async function runTurns(
 		}
 		return { state: { turns, output: replyText(body) }, actions: [] };
 	}
-}
-
-/** n8n error types for the editor's error panel, keeping Twigg's code, hint and details. */
-function toNodeError(node: INode, error: unknown, itemIndex: number): NodeOperationError | NodeApiError {
-	if (error instanceof NodeOperationError || error instanceof NodeApiError) return error;
-	if (error instanceof TwiggApiError) {
-		return new NodeApiError(node, { code: error.code, message: error.message } as JsonObject, {
-			message: error.message,
-			description: error.description,
-			httpCode: String(error.status),
-			itemIndex,
-		});
-	}
-	return new NodeOperationError(node, error as Error, { itemIndex });
 }

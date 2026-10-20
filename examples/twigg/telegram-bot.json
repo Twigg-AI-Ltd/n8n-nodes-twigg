@@ -129,9 +129,8 @@
       "parameters": {
         "model": "claude-haiku-5-5",
         "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
-        "options": {
-          "namespace": "telegram-bot"
-        }
+        "namespace": "telegram-bot",
+        "options": {}
       }
     },
     {

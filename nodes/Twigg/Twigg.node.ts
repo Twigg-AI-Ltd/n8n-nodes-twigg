@@ -4,14 +4,15 @@ import type {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	JsonObject,
 } from 'n8n-workflow';
-import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import { TwiggClient } from '../shared/client';
-import { TwiggApiError } from '../shared/errors';
-import { resolveExternalId } from '../shared/ids';
+import { importFromMemory, isImportUnavailable } from '../shared/history-import';
+import { chatTitleFor, resolveExternalId } from '../shared/ids';
+import { DEFAULT_NAMESPACE } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
+import { toNodeError } from '../shared/node-errors';
 import type { HistoryPart } from '../shared/types';
 
 type HistoryOptions = {
@@ -29,11 +30,12 @@ export class Twigg implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{ $parameter["operation"] + ": " + $parameter["resource"] }}',
-		description: 'Look up, read, reset or abort the conversations the Twigg Chat Model keeps',
+		description: 'Look up, read, import, reset or abort the conversations Twigg keeps for your agents',
 		defaults: {
 			name: 'Twigg',
 		},
-		inputs: [NodeConnectionTypes.Main],
+		// Import History reads from an n8n Memory node, so that operation gets a Memory input.
+		inputs: `={{ $parameter.resource === 'chat' && $parameter.operation === 'importHistory' ? ['main', { type: 'ai_memory', displayName: 'Memory', required: true, maxConnections: 1 }] : ['main'] }}`,
 		outputs: [NodeConnectionTypes.Main],
 		usableAsTool: true,
 		credentials: [
@@ -86,6 +88,13 @@ export class Twigg implements INodeType {
 						action: 'Get the history of a chat',
 					},
 					{
+						name: 'Import History',
+						value: 'importHistory',
+						description:
+							'Copy a conversation from an n8n Memory node into Twigg, if the chat has no history on Twigg yet',
+						action: 'Import a chat history from memory',
+					},
+					{
 						name: 'Open',
 						value: 'open',
 						description: 'Create the chat if it does not exist yet, otherwise get it',
@@ -111,13 +120,31 @@ export class Twigg implements INodeType {
 				default: 'getAll',
 			},
 			{
+				displayName:
+					'Imports one conversation per input item. Feed it one item per old session, for example from a Postgres node running SELECT DISTINCT session_id FROM n8n_chat_histories, and set the connected Memory node\'s session key to the same field. A chat that already has history on Twigg is left as it is, so running this twice is safe. The old memory is only read.',
+				name: 'importNotice',
+				type: 'notice',
+				default: '',
+				displayOptions: { show: { resource: ['chat'], operation: ['importHistory'] } },
+			},
+			{
 				displayName: 'Chat ID',
 				name: 'chatId',
 				type: 'string',
 				default: '={{ $json.sessionId }}',
 				required: true,
-				displayOptions: { show: { resource: ['chat'] } },
-				description: 'The same chat ID the Twigg Chat Model node uses for this conversation',
+				displayOptions: { show: { resource: ['chat'] }, hide: { operation: ['importHistory'] } },
+				description: 'The same Chat ID the Twigg AI Agent or Twigg Chat Model uses for this conversation',
+			},
+			{
+				displayName: 'Chat ID',
+				name: 'chatId',
+				type: 'string',
+				default: '={{ $json.session_id }}',
+				required: true,
+				displayOptions: { show: { resource: ['chat'], operation: ['importHistory'] } },
+				description:
+					'The Chat ID the conversation will have on Twigg: the value your Twigg AI Agent or Twigg Chat Model uses as Chat ID, usually the old session ID',
 			},
 			{
 				displayName: 'Hash Chat ID',
@@ -132,9 +159,10 @@ export class Twigg implements INodeType {
 				displayName: 'Namespace',
 				name: 'namespace',
 				type: 'string',
-				default: '',
-				displayOptions: { show: { resource: ['chat'], operation: ['open'] } },
-				description: 'The namespace to create the chat in. Ignored when the chat already exists.',
+				default: DEFAULT_NAMESPACE,
+				displayOptions: { show: { resource: ['chat'], operation: ['open', 'importHistory'] } },
+				description:
+					'The namespace to create the chat in: the same Namespace your Twigg AI Agent or Twigg Chat Model uses',
 			},
 			{
 				displayName: 'Title',
@@ -211,7 +239,7 @@ export class Twigg implements INodeType {
 					returnData.push({ json, pairedItem: { item: itemIndex } });
 				}
 			} catch (error) {
-				const wrapped = toNodeError(this, error, itemIndex);
+				const wrapped = toNodeError(this.getNode(), error, itemIndex);
 				if (this.continueOnFail()) {
 					returnData.push({
 						json: { error: wrapped.message, description: wrapped.description ?? undefined },
@@ -227,26 +255,13 @@ export class Twigg implements INodeType {
 	}
 }
 
-function toNodeError(ctx: IExecuteFunctions, error: unknown, itemIndex: number): NodeOperationError | NodeApiError {
-	if (error instanceof TwiggApiError) {
-		return new NodeApiError(ctx.getNode(), { message: error.message, code: error.code } as JsonObject, {
-			message: error.message,
-			description: error.description,
-			httpCode: String(error.status),
-			itemIndex,
-		});
-	}
-	if (error instanceof NodeOperationError || error instanceof NodeApiError) return error;
-	return new NodeOperationError(ctx.getNode(), error as Error, { itemIndex });
-}
-
-function chatIdFor(ctx: IExecuteFunctions, itemIndex: number): string {
+function chatIdFor(ctx: IExecuteFunctions, itemIndex: number): { id: string; raw: string; hashed: boolean } {
 	const raw = ctx.getNodeParameter('chatId', itemIndex) as unknown;
 	if (raw === '' || raw === undefined || raw === null) {
 		throw new NodeOperationError(ctx.getNode(), 'Chat ID is empty', { itemIndex });
 	}
 	const hash = ctx.getNodeParameter('hashChatId', itemIndex, false) as boolean;
-	return resolveExternalId(String(raw), hash).id;
+	return { ...resolveExternalId(String(raw), hash), raw: String(raw) };
 }
 
 function historyPartJson(part: HistoryPart): IDataObject {
@@ -269,7 +284,8 @@ async function runOperation(
 	if (resource !== 'chat') {
 		throw new NodeOperationError(ctx.getNode(), `Unknown resource "${resource}"`, { itemIndex });
 	}
-	const externalId = chatIdFor(ctx, itemIndex);
+	const chatId = chatIdFor(ctx, itemIndex);
+	const externalId = chatId.id;
 
 	switch (operation) {
 		case 'get':
@@ -282,6 +298,41 @@ async function runOperation(
 				...(title ? { title } : {}),
 			});
 			return [{ ...(chat as unknown as IDataObject), created }];
+		}
+		case 'importHistory': {
+			const memory = await ctx.getInputConnectionData(NodeConnectionTypes.AiMemory, itemIndex);
+			if (!memory) {
+				throw new NodeOperationError(ctx.getNode(), 'No Memory node connected', {
+					description: 'Connect the Memory node your old agent used to the Memory input.',
+					itemIndex,
+				});
+			}
+			const namespace = String(ctx.getNodeParameter('namespace', itemIndex, DEFAULT_NAMESPACE) ?? '').trim();
+			const title = chatId.hashed ? undefined : chatTitleFor(chatId.raw);
+			try {
+				const outcome = await importFromMemory(
+					client,
+					externalId,
+					{ ...(namespace ? { namespace } : {}), ...(title ? { title } : {}) },
+					memory,
+				);
+				return [
+					{
+						chat_id: externalId,
+						status: outcome.status,
+						messages_read: outcome.parts,
+						...(outcome.status === 'empty' ? {} : (outcome.response as unknown as IDataObject)),
+					},
+				];
+			} catch (error) {
+				throw isImportUnavailable(error)
+					? new NodeOperationError(ctx.getNode(), "Twigg's history import isn't available yet", {
+							description:
+								'This Twigg API does not have the import endpoint yet. Nothing was changed; run this again once it is live.',
+							itemIndex,
+						})
+					: toNodeError(ctx.getNode(), error, itemIndex);
+			}
 		}
 		case 'delete':
 			await client.deleteChatByExternalId(externalId);

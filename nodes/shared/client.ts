@@ -8,6 +8,8 @@ import type {
 	ChatSummary,
 	CreateResponseRequest,
 	HistoryPageResponse,
+	ImportHistoryRequest,
+	ImportHistoryResponse,
 	OpenChatRequest,
 	ResponseBody,
 } from './types';
@@ -129,6 +131,17 @@ export class TwiggClient {
 		return body;
 	}
 
+	/** The chat, or null when no chat holds this external id. */
+	async findChatByExternalId(externalId: string): Promise<ChatSummary | null> {
+		const response = await this.request({
+			method: 'GET',
+			path: `/api/v1/chats/external/${encodeExternalId(externalId)}`,
+		});
+		if (response.statusCode === 200) return response.body as ChatSummary;
+		if (response.statusCode === 404) return null;
+		throw this.toError(response);
+	}
+
 	async openChatByExternalId(
 		externalId: string,
 		request: OpenChatRequest = {},
@@ -161,6 +174,17 @@ export class TwiggClient {
 			[200],
 		);
 		return body;
+	}
+
+	/** Imports past conversation into an empty chat; 200 with `skipped` when it already has history. */
+	async importHistoryByExternalId(
+		externalId: string,
+		request: ImportHistoryRequest,
+	): Promise<{ status: number; body: ImportHistoryResponse }> {
+		return await this.call<ImportHistoryResponse>(
+			{ method: 'POST', path: `/api/v1/chats/external/${encodeExternalId(externalId)}/import`, body: request },
+			[200, 201],
+		);
 	}
 
 	async abortByExternalId(externalId: string): Promise<AbortAccepted> {

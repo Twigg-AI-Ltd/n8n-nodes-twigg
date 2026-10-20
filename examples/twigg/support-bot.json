@@ -97,9 +97,8 @@
       "parameters": {
         "model": "claude-haiku-5-5",
         "chatId": "={{ $json.sessionId }}",
-        "options": {
-          "namespace": "support-bot"
-        }
+        "namespace": "support-bot",
+        "options": {}
       }
     },
     {

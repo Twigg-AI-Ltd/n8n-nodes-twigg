@@ -39,8 +39,10 @@ input; Twigg runs the model and keeps the conversation.
 | **Model** | The model that answers, from the live list on your key. Change it at any time; the history stays. |
 | **Prompt (User Message)** | The message to answer. Defaults to `{{ $json.chatInput }}` from a Chat Trigger. |
 | **Chat ID** | What identifies the conversation, as on the Twigg Chat Model below. |
+| **Namespace** | Where new chats are created on Twigg. Defaults to `n8n`, so one budget and retention policy in the Twigg console covers everything from n8n. A chat stays in the namespace it was created in. |
 | **System Message** | Instructions sent with every message, not stored as history. |
-| **Options** | Namespace, Hash Chat ID, Max Iterations (tool rounds per message, default 10), and the same Maximum Number of Tokens, Reasoning Effort, On Refusal, Pending Tool Call Window, Max Wait and Timeout options as the Twigg Chat Model. |
+| **Import History From Old Memory** | Off by default. When on, the agent gets a **Memory (Import)** input: see below. |
+| **Options** | Hash Chat ID, Max Iterations (tool rounds per message, default 10), and the same Maximum Number of Tokens, Reasoning Effort, On Refusal, Pending Tool Call Window, Max Wait and Timeout options as the Twigg Chat Model. |
 
 The output is `{ "output": "<reply>" }`, the same field n8n's AI Agent produces, so a Chat Trigger,
 Respond to Webhook or messaging node after it works unchanged.
@@ -51,7 +53,22 @@ tool call ids. Each input item is its own conversation turn.
 
 To move a workflow over: add a Twigg AI Agent, connect the same trigger, tools and output, copy the
 system message, set the Chat ID to what the Memory node used as its session key, and delete the old
-AI Agent, Chat Model and Memory nodes.
+AI Agent and Chat Model nodes.
+
+#### Bringing old conversations along
+
+Turn on **Import History From Old Memory** and connect the Memory node your old agent used (Postgres,
+Redis, MongoDB and so on) to the **Memory (Import)** input. Each conversation then moves over by itself
+the first time it gets a message: if Twigg has no history for that Chat ID yet, the agent reads the
+session's full history from the Memory node, imports it, and answers. The old memory is only read,
+never changed, so you can switch back at any time. Once your active conversations have moved, turn the
+option off and delete the Memory node.
+
+If the import fails for any reason, the message is still answered (without the old history) and the
+reason is logged. To move every conversation at once instead, use **Twigg → Chat → Import History**.
+
+> The import endpoint is rolling out on the Twigg API. Until it is live, the agent answers without
+> importing and logs that the import is not available yet.
 
 ### Twigg Chat Model (sub-node)
 
@@ -63,7 +80,7 @@ replays (only the new message is sent) and logs a warning.
 |---|---|
 | **Model** | The model that answers, from the live list on your key. Every model shares the same conversation, so you can switch at any time and the history stays. |
 | **Chat ID** | What identifies the conversation. Defaults to `{{ $json.sessionId }}`, which a Chat Trigger provides. For a messaging bot use the sender's id, such as the Telegram chat id or phone number. Each distinct value is its own conversation. |
-| **Options → Namespace** | The Twigg namespace new chats are created in. Namespaces carry instructions, saved tools and context budgets you configure in the console. |
+| **Namespace** | Where new chats are created on Twigg, with the instructions, budgets and retention you configure in the console. Defaults to `n8n`. |
 | **Options → Hash Chat ID** | Sends a SHA-256 hash of the Chat ID instead of the raw value. Turn it on when the id is personal data (a phone number), because ids appear in request logs. The Twigg action node has the same switch; keep them in step. |
 | **Options → Maximum Number of Tokens** | Output ceiling per reply. |
 | **Options → Reasoning Effort** | Thinking budget on models that support it. |
@@ -92,7 +109,8 @@ replays (only the new message is sent) and logs a warning.
 
 ### Twigg (action node)
 
-Operations on the conversations the Chat Model keeps, addressed by the same Chat ID.
+Operations on the conversations the Twigg AI Agent and Twigg Chat Model keep, addressed by the same
+Chat ID.
 
 | Resource | Operation | Use it to |
 |---|---|---|
@@ -101,7 +119,15 @@ Operations on the conversations the Chat Model keeps, addressed by the same Chat
 | Chat | Get History | Read the stored conversation, oldest first, one item per part. |
 | Chat | Delete | Reset a conversation ("start over"): deletes the chat and its history, and the next message starts fresh. |
 | Chat | Abort | Stop a reply that is being generated. |
+| Chat | Import History | Move conversations out of an n8n Memory node in one go: one conversation per input item (see below). |
 | Model | Get Many | List the models on your key, with prices. |
+
+**Import History** gets a **Memory** input. Feed it one item per old session, for example a Postgres
+node running `SELECT DISTINCT session_id FROM n8n_chat_histories`, set the connected Memory node's
+session key to `{{ $json.session_id }}`, and run it once. Chats that already have history on Twigg are
+left alone, so running it twice is safe. Each output item reports `imported`, `skipped` (already had
+history) or `empty`. Simple Memory cannot be imported: it lives in the n8n process and has nothing
+stored to read.
 
 ## Example: Telegram bot with memory
 

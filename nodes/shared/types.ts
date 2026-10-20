@@ -167,3 +167,44 @@ export type AbortAccepted = {
 	run_id: string;
 	status: string;
 };
+
+/**
+ * History import (POST /api/v1/chats/external/{external_id}/import). Not live on the API yet: the
+ * shapes follow the agreed spec, and callers treat 404/405 as "not available".
+ */
+export type ImportPart =
+	| { type: 'prompt'; text: string; created_at?: string }
+	| { type: 'message'; text: string; created_at?: string }
+	| {
+			type: 'tool_call';
+			tool_use_id: string;
+			name: string;
+			arguments: Record<string, unknown> | string;
+			created_at?: string;
+	  }
+	| {
+			type: 'tool_result';
+			tool_use_id: string;
+			tool_name: string;
+			text: string;
+			is_error?: boolean;
+			created_at?: string;
+	  };
+
+export type ImportHistoryRequest = {
+	chat?: OpenChatRequest;
+	parts: ImportPart[];
+	idempotency_key?: string;
+};
+
+export type ImportHistoryResponse = {
+	chat_id: string;
+	/** True when the chat already had history, so nothing was imported. */
+	skipped?: boolean;
+	created_chat?: boolean;
+	imported_parts?: number;
+	dropped_parts?: number;
+	closed_tool_calls?: string[];
+	compaction?: unknown;
+	warnings?: unknown[];
+};

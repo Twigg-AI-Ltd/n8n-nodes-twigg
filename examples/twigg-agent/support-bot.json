@@ -34,10 +34,9 @@
         "model": "claude-haiku-5-5",
         "text": "={{ $json.chatInput }}",
         "chatId": "={{ $json.sessionId }}",
+        "namespace": "support-bot",
         "systemMessage": "You are the customer support assistant for Trailhead Outdoor, an online outdoor-gear shop. Be friendly and brief: at most three sentences. Use lookup_order for anything about an order, search_help_center for policies (returns, delivery, sizing), and the calculator for any arithmetic. Never invent order details.",
-        "options": {
-          "namespace": "support-bot"
-        }
+        "options": {}
       }
     },
     {

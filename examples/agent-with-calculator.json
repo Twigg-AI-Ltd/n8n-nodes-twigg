@@ -62,9 +62,8 @@
 			"parameters": {
 				"model": "claude-haiku-5-5",
 				"chatId": "={{ $json.sessionId }}",
-				"options": {
-					"namespace": "n8n-dev"
-				}
+				"namespace": "n8n-dev",
+				"options": {}
 			},
 			"id": "44444444-4444-4444-8444-444444444444",
 			"name": "Twigg Chat Model",

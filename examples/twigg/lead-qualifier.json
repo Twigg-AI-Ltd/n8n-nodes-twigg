@@ -100,8 +100,8 @@
       "parameters": {
         "model": "claude-haiku-5-5",
         "chatId": "={{ $('Incoming WhatsApp message').item.json.body.from }}",
+        "namespace": "lead-qualifier",
         "options": {
-          "namespace": "lead-qualifier",
           "hashChatId": true
         }
       }

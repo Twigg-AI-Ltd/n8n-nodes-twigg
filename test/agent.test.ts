@@ -15,18 +15,28 @@ function harness({
 	tools = [] as Array<{ node: string; tool: Tool | { tools: Tool[] } }>,
 	options = {} as Record<string, unknown>,
 	continueOnFail = false,
+	importHistory = false,
+	memory = undefined as unknown,
+	otherRoutes = (() => undefined) as (req: { method: string; url: string; body?: unknown }) => { statusCode: number; body: unknown } | undefined,
 }: {
 	responses: ResponseBody[];
 	items?: INodeExecutionData[];
 	tools?: Array<{ node: string; tool: Tool | { tools: Tool[] } }>;
 	options?: Record<string, unknown>;
 	continueOnFail?: boolean;
+	importHistory?: boolean;
+	memory?: unknown;
+	otherRoutes?: (req: { method: string; url: string; body?: unknown }) => { statusCode: number; body: unknown } | undefined;
 }) {
+	/** Calls to /responses; everything else (chat lookups, imports) goes to `otherCalls`. */
 	const requests: Array<{ url: string; body: CreateResponseRequest }> = [];
+	const otherCalls: Array<{ method: string; url: string; body?: unknown }> = [];
+	const warnings: string[] = [];
 	const params: Record<string, unknown> = {
 		model: 'claude-haiku-5-5',
 		systemMessage: 'Be brief.',
 		options,
+		importHistory,
 	};
 	const ctx = {
 		getInputData: () => items,
@@ -38,13 +48,22 @@ function harness({
 		getCredentials: async () => ({ apiKey: 'tw_test', baseUrl: 'https://api.twigg.ai' }),
 		getNode: () => ({ id: 'node-1', name: 'Twigg AI Agent' }),
 		getExecutionId: () => 'exec-1',
-		getInputConnectionData: async () => tools.map((t) => t.tool),
+		getInputConnectionData: async (type: string) => (type === 'ai_memory' ? memory : tools.map((t) => t.tool)),
 		getParentNodes: () => tools.map((t) => ({ name: t.node, disabled: false })),
 		getChatTrigger: () => null,
 		continueOnFail: () => continueOnFail,
-		logger: { debug: () => {}, warn: () => {} },
+		logger: { debug: () => {}, warn: (message: string) => warnings.push(message) },
 		helpers: {
-			httpRequestWithAuthentication: async (_cred: string, req: { url: string; body: CreateResponseRequest }) => {
+			httpRequestWithAuthentication: async (
+				_cred: string,
+				req: { method: string; url: string; body: CreateResponseRequest },
+			) => {
+				if (!req.url.endsWith('/responses')) {
+					otherCalls.push({ method: req.method, url: req.url, body: req.body });
+					const routed = otherRoutes(req);
+					if (!routed) throw new Error(`unexpected request ${req.method} ${req.url}`);
+					return { headers: {}, ...routed };
+				}
 				requests.push({ url: req.url, body: req.body });
 				const body = responses.shift();
 				if (!body) throw new Error('no scripted response');
@@ -55,6 +74,8 @@ function harness({
 	const node = new TwiggAgent();
 	return {
 		requests,
+		otherCalls,
+		warnings,
 		run: async (response?: EngineResponse) => await node.execute.call(ctx, response),
 	};
 }
@@ -217,5 +238,70 @@ describe('TwiggAgent', () => {
 		const { run } = harness({ responses: [refusalResponse], continueOnFail: true });
 		const out = (await run()) as INodeExecutionData[][];
 		expect(out[0][0].json).toEqual({ error: 'The model refused to answer (claude-haiku-5-5)' });
+	});
+});
+
+describe('TwiggAgent history import', () => {
+	const oldMemory = {
+		chatHistory: {
+			getMessages: async () => [
+				{ getType: () => 'human', content: "I'm Priya, order 1042" },
+				{ getType: () => 'ai', content: 'Thanks Priya, it has shipped.' },
+			],
+		},
+	};
+	const notFound = { statusCode: 404, body: { error: { code: 'not_found', message: 'not found' } } };
+
+	it('imports the old conversation before the first message of a new chat', async () => {
+		const { run, requests, otherCalls } = harness({
+			responses: [endTurnResponse],
+			importHistory: true,
+			memory: oldMemory,
+			otherRoutes: (req) =>
+				req.method === 'GET' ? notFound : { statusCode: 201, body: { chat_id: 'c1', created_chat: true, imported_parts: 2 } },
+		});
+		await run();
+		expect(otherCalls.map((c) => `${c.method} ${c.url.split('/api/v1')[1]}`)).toEqual([
+			'GET /chats/external/web-1',
+			'POST /chats/external/web-1/import',
+		]);
+		expect(otherCalls[1].body).toEqual({
+			chat: { namespace: 'n8n', title: 'web-1' },
+			parts: [
+				{ type: 'prompt', text: "I'm Priya, order 1042" },
+				{ type: 'message', text: 'Thanks Priya, it has shipped.' },
+			],
+		});
+		expect(requests).toHaveLength(1);
+	});
+
+	it('leaves a chat that already has history on Twigg alone', async () => {
+		const { run, otherCalls } = harness({
+			responses: [endTurnResponse],
+			importHistory: true,
+			memory: oldMemory,
+			otherRoutes: () => ({ statusCode: 200, body: { id: 'c1', length: 12 } }),
+		});
+		await run();
+		expect(otherCalls.map((c) => c.method)).toEqual(['GET']);
+	});
+
+	it('answers anyway when the API has no import endpoint yet', async () => {
+		const { run, warnings, requests } = harness({
+			responses: [endTurnResponse],
+			importHistory: true,
+			memory: oldMemory,
+			otherRoutes: () => notFound,
+		});
+		const out = (await run()) as INodeExecutionData[][];
+		expect(out[0][0].json.output).toMatch(/1042/);
+		expect(requests).toHaveLength(1);
+		expect(warnings.join(' ')).toMatch(/not available on this Twigg API yet/);
+	});
+
+	it('does not look anything up when the import is off', async () => {
+		const { run, otherCalls } = harness({ responses: [endTurnResponse], memory: oldMemory });
+		await run();
+		expect(otherCalls).toEqual([]);
 	});
 });
