@@ -20,6 +20,7 @@ export const DEFAULT_MODEL = 'claude-haiku-5-5';
 type ModelOptions = {
 	namespace?: string;
 	hashChatId?: boolean;
+	onRefusal?: 'error' | 'returnText';
 	maxTokens?: number;
 	reasoningEffort?: 'default' | ReasoningEffort;
 	pendingToolCallWindow?: number;
@@ -134,6 +135,27 @@ export class LmChatTwigg implements INodeType {
 							'The Twigg namespace new chats are created in. Namespaces carry their own instructions, tools and context budgets, configured in the Twigg console. Lowercase letters, digits, - and _, with / between levels.',
 					},
 					{
+						displayName: 'On Refusal',
+						name: 'onRefusal',
+						type: 'options',
+						default: 'error',
+						description:
+							'What happens when the model declines to answer. The refusal text can be a notice meant for developers, so by default the node fails rather than send it to the user as the reply.',
+						options: [
+							{
+								name: 'Fail the Run',
+								value: 'error',
+								description:
+									"Stop with an error that includes the refusal; handle it with an error workflow or the node's On Error setting",
+							},
+							{
+								name: 'Return Refusal Text',
+								value: 'returnText',
+								description: 'Give the refusal to the Agent as the reply',
+							},
+						],
+					},
+					{
 						displayName: 'Pending Tool Call Window (Seconds)',
 						name: 'pendingToolCallWindow',
 						type: 'number',
@@ -228,6 +250,7 @@ export class LmChatTwigg implements INodeType {
 				reasoningEffort:
 					options.reasoningEffort && options.reasoningEffort !== 'default' ? options.reasoningEffort : undefined,
 				pendingToolCallWindowSeconds: pendingWindow > 0 ? pendingWindow : undefined,
+				onRefusal: options.onRefusal ?? 'error',
 				idempotencyScope: [this.getExecutionId(), this.getNode().id, itemIndex],
 			},
 			{

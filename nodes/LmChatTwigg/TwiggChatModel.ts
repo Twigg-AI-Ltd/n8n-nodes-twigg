@@ -8,6 +8,7 @@ import type {
 } from '@n8n/ai-node-sdk';
 
 import type { TwiggClient } from '../shared/client';
+import { TwiggRefusalError } from '../shared/errors';
 import { buildIdempotencyKey } from '../shared/ids';
 import {
 	buildInputParts,
@@ -28,6 +29,8 @@ export type TwiggModelSettings = {
 	reasoningEffort?: ReasoningEffort;
 	/** `wait_for_pending_tool_calls`, in seconds. Omitted when undefined. */
 	pendingToolCallWindowSeconds?: number;
+	/** What a refusal does: fail the run (the default) or reach the Agent as the reply. */
+	onRefusal?: 'error' | 'returnText';
 	/** What makes an idempotency key unique to this n8n run: execution id, node id, item index. */
 	idempotencyScope: unknown[];
 };
@@ -114,6 +117,13 @@ export class TwiggChatModel implements ChatModel {
 		const body = await this.client.createResponseByExternalId(this.settings.externalId, request);
 		for (const block of body.content) {
 			if (block.type === 'tool_call') this.shared.toolNamesById.set(block.tool_use_id, block.name);
+		}
+		if (body.stop_reason === 'refusal' && this.settings.onRefusal !== 'returnText') {
+			const text = body.content
+				.filter((block) => block.type === 'refusal' || block.type === 'text')
+				.map((block) => (block as { text: string }).text)
+				.join('\n\n');
+			throw new TwiggRefusalError(text, body.run_id, body.model_served);
 		}
 		return toGenerateResult(body);
 	}

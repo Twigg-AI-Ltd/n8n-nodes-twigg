@@ -38,6 +38,7 @@ logs a warning when it notices replayed history.
 | **Options → Hash Chat ID** | Sends a SHA-256 hash of the Chat ID instead of the raw value. Turn it on when the id is personal data (a phone number), because ids appear in request logs. The Twigg action node has the same switch; keep them in step. |
 | **Options → Maximum Number of Tokens** | Output ceiling per reply. |
 | **Options → Reasoning Effort** | Thinking budget on models that support it. |
+| **Options → On Refusal** | What happens when the model declines to answer. **Fail the Run** (default) stops with an error that includes the refusal, so a provider notice never reaches your users as a reply; **Return Refusal Text** passes it to the Agent instead. |
 | **Options → Pending Tool Call Window** | When a new message arrives while a tool from the previous message is still running, wait up to this long (default 60 s) for the tool result instead of abandoning the call. |
 | **Options → Max Wait for a Busy Chat** | How long to keep waiting (default 120 s) when another reply is still being generated on the same chat, or Twigg asks to slow down. |
 | **Options → Timeout** | HTTP timeout. Twigg answers within about 280 s, so keep it above that. |

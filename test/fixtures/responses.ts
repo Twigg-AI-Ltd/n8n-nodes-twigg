@@ -60,3 +60,13 @@ export const endTurnResponse: ResponseBody = {
 export const errorEnvelope = (code: string, message: string, details?: unknown) => ({
 	error: { code, message, hint: null, ...(details !== undefined ? { details } : {}) },
 });
+
+export const refusalResponse: ResponseBody = {
+	...toolUseResponse,
+	run_id: '01912d53-0000-7a90-b3d2-8c5f1a0e6742',
+	content: [{ type: 'refusal', text: 'API integrators: you can reduce refusals by configuring a fallback model.' }],
+	text: 'API integrators: you can reduce refusals by configuring a fallback model.',
+	pending_tool_calls: [],
+	stop_reason: 'refusal',
+	model_served: 'claude-haiku-5-5',
+};

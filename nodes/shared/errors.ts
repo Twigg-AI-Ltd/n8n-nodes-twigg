@@ -53,3 +53,32 @@ export function errorBodyFrom(status: number, body: unknown): ErrorBody {
 	}
 	return { code: `http_${status}`, message: `Twigg responded with HTTP ${status}` };
 }
+
+/**
+ * The model declined to answer. Twigg returns this as a normal 200 response, often with a
+ * provider notice meant for developers rather than end users, so by default the node fails the
+ * run with it instead of handing it to the Agent as the reply.
+ */
+export class TwiggRefusalError extends Error {
+	/** 400 so n8n's LLM retry handler does not retry: a retry would replay the same stored refusal. */
+	readonly status = 400;
+	readonly code = 'refusal';
+
+	constructor(
+		readonly refusalText: string,
+		readonly runId: string,
+		readonly modelServed: string | null,
+	) {
+		super(modelServed ? `The model refused to answer (${modelServed})` : 'The model refused to answer');
+		this.name = 'TwiggRefusalError';
+	}
+
+	get description(): string {
+		const lines = [
+			`Twigg run ${this.runId} ended with stop reason "refusal".`,
+			"Set the Twigg Chat Model's On Refusal option to Return Refusal Text to pass it to the Agent instead.",
+		];
+		if (this.refusalText.trim() !== '') lines.push(`Refusal: ${this.refusalText.trim()}`);
+		return lines.join(' ');
+	}
+}

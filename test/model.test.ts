@@ -6,7 +6,8 @@ import type { TwiggModelSettings } from '../nodes/LmChatTwigg/TwiggChatModel';
 import { TwiggClient } from '../nodes/shared/client';
 import type { HttpRequestSpec } from '../nodes/shared/client';
 import type { CreateResponseRequest, ResponseBody } from '../nodes/shared/types';
-import { endTurnResponse, toolUseResponse } from './fixtures/responses';
+import { TwiggRefusalError } from '../nodes/shared/errors';
+import { endTurnResponse, refusalResponse, toolUseResponse } from './fixtures/responses';
 
 function harness(responses: ResponseBody[], settingsOverrides: Partial<TwiggModelSettings> = {}) {
 	const calls: HttpRequestSpec[] = [];
@@ -165,6 +166,21 @@ describe('TwiggChatModel', () => {
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toMatch(/Memory node/);
 		expect(requestAt(0).input).toEqual([{ type: 'prompt', text: 'What is my name?' }]);
+	});
+
+	it('fails on a refusal by default, with a status n8n does not retry', async () => {
+		const { model } = harness([refusalResponse]);
+		const error = await model.generate([user]).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(TwiggRefusalError);
+		expect(error).toMatchObject({ status: 400, code: 'refusal', runId: refusalResponse.run_id });
+		expect((error as TwiggRefusalError).description).toMatch(/fallback model/);
+	});
+
+	it('returns the refusal text as the reply when asked to', async () => {
+		const { model } = harness([refusalResponse], { onRefusal: 'returnText' });
+		const result = await model.generate([user]);
+		expect(result.finishReason).toBe('content-filter');
+		expect(result.message.content).toEqual([{ type: 'text', text: refusalResponse.text }]);
 	});
 
 	it('streams the same result as chunks', async () => {
