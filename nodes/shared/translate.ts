@@ -18,6 +18,7 @@ import type {
 	SubmittedPart,
 	ToolDefinition,
 } from './types';
+import { isZodSchema, zodToJsonSchema } from './zod-schema';
 
 /** A problem with the conversation n8n handed over, before any request is made. */
 export class TwiggTranslateError extends Error {
@@ -182,7 +183,9 @@ export function cleanInputSchema(schema: Record<string, unknown>): Record<string
 
 /**
  * Converts the tools the Agent bound into Twigg tool definitions. `toJsonSchema` is the SDK's
- * converter, injected so this module stays free of runtime dependencies.
+ * converter, injected so this module stays free of runtime dependencies. When it hands back a
+ * Zod schema unconverted (the tool was built with a different copy of Zod than the SDK's), the
+ * schema is converted here instead.
  */
 export function toToolDefinitions(
 	tools: Tool[],
@@ -191,10 +194,12 @@ export function toToolDefinitions(
 	const definitions: ToolDefinition[] = [];
 	for (const tool of tools) {
 		if (tool.type !== 'function') continue;
+		const converted: unknown = toJsonSchema(tool);
+		const schema = isZodSchema(converted) ? zodToJsonSchema(converted) : converted;
 		const definition: ToolDefinition = {
 			name: tool.name,
 			description: tool.description ?? null,
-			input_schema: cleanInputSchema(toJsonSchema(tool)),
+			input_schema: cleanInputSchema(schema as Record<string, unknown>),
 		};
 		if (tool.strict !== undefined) definition.strict = tool.strict;
 		definitions.push(definition);
