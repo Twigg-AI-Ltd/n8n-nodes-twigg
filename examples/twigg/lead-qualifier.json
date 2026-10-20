@@ -1,5 +1,5 @@
 {
-  "name": "WhatsApp lead qualifier (Twigg)",
+  "name": "WhatsApp lead qualifier (Twigg Chat Model)",
   "nodes": [
     {
       "id": "02af59c4-01de-5a5a-bff8-6a570acecb75",
@@ -28,11 +28,11 @@
         0
       ],
       "parameters": {
-        "promptType": "define",
-        "text": "={{ $json.body.text }}",
         "options": {
           "systemMessage": "You qualify inbound sales leads for Twigg Analytics over WhatsApp. Keep every reply under 40 words. Find out, one question at a time: the person's name, company, team size and monthly budget. When you have all four, offer a demo using check_availability, and once they pick a slot call save_lead with everything you collected. Do not ask for anything they already told you."
-        }
+        },
+        "promptType": "define",
+        "text": "={{ $json.body.text }}"
       }
     },
     {

@@ -61,11 +61,11 @@
         200
       ],
       "parameters": {
-        "promptType": "define",
-        "text": "={{ $json.message.text }}",
         "options": {
           "systemMessage": "You are a helpful personal assistant on Telegram. Keep replies short. Remember what the user tells you about themselves and use it."
-        }
+        },
+        "promptType": "define",
+        "text": "={{ $json.message.text }}"
       }
     },
     {

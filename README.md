@@ -1,15 +1,19 @@
 # n8n-nodes-twigg
 
-Twigg as the chat model for n8n AI Agents. [Twigg](https://twigg.ai) keeps each conversation on
-its servers, fits it to the model's context window, trims old tool output and compacts long chats,
-and runs any of its models on the same history. With this package the Agent needs no Memory node:
-the conversation survives restarts, queue mode and scaling, with no database to set up.
+AI agents for n8n whose model and memory are [Twigg](https://twigg.ai). Twigg keeps each
+conversation on its servers, fits it to the model's context window, trims old tool output and
+compacts long chats, and runs any of its models on the same history. No Memory node and no
+database: the conversation survives restarts, queue mode and scaling.
 
-**Trigger → AI Agent → Twigg Chat Model.** That is the whole workflow for a WhatsApp, Telegram,
-website or support bot with persistent memory.
+Two ways to use it:
 
-> Requires n8n 2.16 or later (the first release that ships `@n8n/ai-node-sdk`, which chat model
-> community nodes are built on).
+- **Trigger → Twigg AI Agent**, with your tools connected. One node in place of n8n's AI Agent,
+  Chat Model and Memory: pick the model, namespace and Chat ID in its settings.
+- **Trigger → AI Agent → Twigg Chat Model.** Keep n8n's AI Agent (and its output parsers, fallback
+  model and other options) and swap only the model and memory.
+
+> Requires n8n 2.16 or later (the first release that ships `@n8n/ai-node-sdk`). The Twigg AI Agent
+> uses n8n's engine to run tools and has been tested on n8n 2.44.
 
 ## Installation
 
@@ -23,6 +27,31 @@ One credential, **Twigg API**, holding an API key from the
 URL at `https://api.twigg.ai` unless Twigg gave you another host.
 
 ## Nodes
+
+### Twigg AI Agent
+
+Use it where you would use n8n's AI Agent. It has one sub-node input, **Tool**: connect any n8n tool
+(Calculator, HTTP Request, Code, Workflow, MCP Client, app tools). There is no Chat Model or Memory
+input; Twigg runs the model and keeps the conversation.
+
+| Parameter | What it does |
+|---|---|
+| **Model** | The model that answers, from the live list on your key. Change it at any time; the history stays. |
+| **Prompt (User Message)** | The message to answer. Defaults to `{{ $json.chatInput }}` from a Chat Trigger. |
+| **Chat ID** | What identifies the conversation, as on the Twigg Chat Model below. |
+| **System Message** | Instructions sent with every message, not stored as history. |
+| **Options** | Namespace, Hash Chat ID, Max Iterations (tool rounds per message, default 10), and the same Maximum Number of Tokens, Reasoning Effort, On Refusal, Pending Tool Call Window, Max Wait and Timeout options as the Twigg Chat Model. |
+
+The output is `{ "output": "<reply>" }`, the same field n8n's AI Agent produces, so a Chat Trigger,
+Respond to Webhook or messaging node after it works unchanged.
+
+When the model calls tools, the agent hands the calls to n8n, which runs the tool nodes (they show up
+in the execution with their own input and output), and sends the results back to Twigg under the same
+tool call ids. Each input item is its own conversation turn.
+
+To move a workflow over: add a Twigg AI Agent, connect the same trigger, tools and output, copy the
+system message, set the Chat ID to what the Memory node used as its session key, and delete the old
+AI Agent, Chat Model and Memory nodes.
 
 ### Twigg Chat Model (sub-node)
 

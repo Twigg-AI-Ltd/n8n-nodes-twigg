@@ -1,5 +1,7 @@
-"""Builds the example workflows: each scenario as a Twigg version and a classic version
-(OpenAI Chat Model + a Memory node) that share the same trigger, prompt and tools.
+"""Builds the example workflows. Each scenario comes three ways that share the same trigger, prompt
+and tools: on the Twigg AI Agent (examples/twigg-agent), on n8n's AI Agent with the Twigg Chat Model
+(examples/twigg), and classic: n8n's AI Agent with an OpenAI Chat Model and a Memory node
+(examples/without-twigg).
 
 Usage: python3 scripts/build-examples.py examples [--dev]
 --dev writes node types as CUSTOM.* (how `n8n-node dev` registers the package) for local testing.
@@ -53,6 +55,23 @@ def twigg_model(position, chat_id, namespace, hash_id=False):
         "chatId": chat_id,
         "options": options,
     })
+
+
+def agent_node(variant, name, position, text, system, chat_id, namespace, hash_id=False):
+    """The agent: Twigg AI Agent for the twigg-agent variant, n8n's AI Agent otherwise."""
+    if variant == "agent":
+        options = {"namespace": namespace}
+        if hash_id:
+            options["hashChatId"] = True
+        return node(name, f"{TWIGG_PREFIX}.twiggAgent", 1, position, {
+            "model": "claude-haiku-5-5", "text": text, "chatId": chat_id, "systemMessage": system, "options": options})
+    params = {"options": {"systemMessage": system}}
+    if text != "={{ $json.chatInput }}":
+        params.update({"promptType": "define", "text": text})
+    return node(name, "@n8n/n8n-nodes-langchain.agent", 3.1, position, params)
+
+
+VARIANT_LABELS = {"agent": "Twigg AI Agent", "twigg": "Twigg Chat Model"}
 
 
 def openai_model(position):
@@ -170,8 +189,8 @@ def support_bot(variant):
         "initialMessages": "Hi! I'm the Trailhead Outdoor assistant. Ask me about an order, returns or delivery.",
         "options": {"title": "Trailhead Outdoor support", "subtitle": "Usually answers in a few seconds"},
     }, webhookId=nid(f"support-{variant}-chat")))
-    nodes.append(node("Support Agent", "@n8n/n8n-nodes-langchain.agent", 3.1, [300, 0], {
-        "options": {"systemMessage": SUPPORT_PROMPT}}))
+    nodes.append(agent_node(variant, "Support Agent", [300, 0], "={{ $json.chatInput }}", SUPPORT_PROMPT,
+                            "={{ $json.sessionId }}", "support-bot"))
     nodes.append(code_tool("Lookup Order", "lookup_order", "Look up an order by its number. Returns status, items, tracking and shipping details.",
                            {"type": "object", "properties": {"order_id": {"type": "string", "description": "The order number, e.g. 1042"}}, "required": ["order_id"]},
                            ORDERS_JS, [420, 260]))
@@ -183,7 +202,15 @@ def support_bot(variant):
     for t in ("Lookup Order", "Search Help Center", "Calculator"):
         link(conns, t, "Support Agent", "ai_tool")
 
-    if variant == "twigg":
+    if variant == "agent":
+        nodes.append(sticky("Note", (
+            "## Support bot on the Twigg AI Agent\n"
+            "**Chat Trigger → Twigg AI Agent**, with tools. No Chat Model, no Memory node.\n\n"
+            "1. Open **Support Agent**, add your Twigg API key and pick a model.\n"
+            "2. Click **Open chat** on the trigger and talk to it. Try order 1042.\n\n"
+            "Twigg runs the model and keeps each conversation (by the chat's `sessionId`), so it survives "
+            "restarts and queue mode. Change the model any time: the history stays."), [-420, -40], 380, 360, 4))
+    elif variant == "twigg":
         nodes.append(twigg_model([120, 260], "={{ $json.sessionId }}", "support-bot"))
         link(conns, "Twigg Chat Model", "Support Agent", "ai_languageModel")
         nodes.append(sticky("Note", (
@@ -206,7 +233,7 @@ def support_bot(variant):
             "mode each worker has its own copy.\n"
             "- Only the last 10 messages are kept, so early facts (a name, an order number) are forgotten.\n\n"
             "See `../twigg/support-bot.json` for the same bot on Twigg."), [-420, -40], 380, 360, 3))
-    return workflow(f"Support bot ({'Twigg' if variant == 'twigg' else 'classic: OpenAI + Simple Memory'})", nodes, conns)
+    return workflow(f"Support bot ({VARIANT_LABELS.get(variant, 'classic: OpenAI + Simple Memory')})", nodes, conns)
 
 
 def lead_qualifier(variant):
@@ -214,9 +241,9 @@ def lead_qualifier(variant):
     nodes.append(node("Incoming WhatsApp message", "n8n-nodes-base.webhook", 2.2, [0, 0], {
         "httpMethod": "POST", "path": f"lead-qualifier-{variant}", "responseMode": "responseNode", "options": {},
     }, webhookId=nid(f"lead-{variant}-webhook")))
-    nodes.append(node("Lead Agent", "@n8n/n8n-nodes-langchain.agent", 3.1, [300, 0], {
-        "promptType": "define", "text": "={{ $json.body.text }}",
-        "options": {"systemMessage": LEAD_PROMPT}}))
+    sender = "={{ $('Incoming WhatsApp message').item.json.body.from }}"
+    nodes.append(agent_node(variant, "Lead Agent", [300, 0], "={{ $json.body.text }}", LEAD_PROMPT,
+                            sender, "lead-qualifier", hash_id=True))
     nodes.append(code_tool("Check Availability", "check_availability", "Free demo slots this week. Optionally filter by weekday.",
                            {"type": "object", "properties": {"day": {"type": "string", "description": "Weekday, e.g. tuesday, or 'any'"}}},
                            AVAIL_JS, [460, 260]))
@@ -234,9 +261,16 @@ def lead_qualifier(variant):
     link(conns, "Lead Agent", "Reply")
     for t in ("Check Availability", "Save Lead"):
         link(conns, t, "Lead Agent", "ai_tool")
-    sender = "={{ $('Incoming WhatsApp message').item.json.body.from }}"
 
-    if variant == "twigg":
+    if variant == "agent":
+        nodes.append(sticky("Note", (
+            "## Lead qualifier on the Twigg AI Agent\n"
+            "Point your WhatsApp provider (Twilio, 360dialog, WhatsApp Cloud API) at this webhook, "
+            "or test with:\n`POST {\"from\": \"+447700900123\", \"text\": \"Hi\"}`\n\n"
+            "**Chat ID** is the sender's phone number, so each person is one conversation. "
+            "**Hash Chat ID** is on: Twigg only ever sees a hash of the number.\n\n"
+            "No database, no Memory node, no Chat Model node."), [-420, -40], 380, 380, 4))
+    elif variant == "twigg":
         nodes.append(twigg_model([120, 260], sender, "lead-qualifier", hash_id=True))
         link(conns, "Twigg Chat Model", "Lead Agent", "ai_languageModel")
         nodes.append(sticky("Note", (
@@ -259,7 +293,7 @@ def lead_qualifier(variant):
             "`n8n_chat_histories` table. Phone numbers are stored in plain text. The window keeps "
             "the last 10 messages, so details given early in a long chat drop out.\n\n"
             "See `../twigg/lead-qualifier.json` for the same flow on Twigg."), [-420, -40], 380, 380, 3))
-    return workflow(f"WhatsApp lead qualifier ({'Twigg' if variant == 'twigg' else 'classic: OpenAI + Postgres memory'})", nodes, conns)
+    return workflow(f"WhatsApp lead qualifier ({VARIANT_LABELS.get(variant, 'classic: OpenAI + Postgres memory')})", nodes, conns)
 
 
 def telegram_bot(variant):
@@ -272,9 +306,9 @@ def telegram_bot(variant):
                                        "rightValue": "/reset", "operator": {"type": "string", "operation": "equals"}}],
                        "combinator": "and"},
         "options": {}}))
-    nodes.append(node("Assistant", "@n8n/n8n-nodes-langchain.agent", 3.1, [480, 200], {
-        "promptType": "define", "text": "={{ $json.message.text }}",
-        "options": {"systemMessage": TELEGRAM_PROMPT}}))
+    chat_id = "={{ $('Telegram Trigger').item.json.message.chat.id }}"
+    nodes.append(agent_node(variant, "Assistant", [480, 200], "={{ $json.message.text }}", TELEGRAM_PROMPT,
+                            chat_id, "telegram-bot"))
     nodes.append(node("Send reply", "n8n-nodes-base.telegram", 1.2, [820, 200], {
         "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}", "text": "={{ $json.output }}",
         "additionalFields": {"appendAttribution": False}}))
@@ -285,19 +319,21 @@ def telegram_bot(variant):
     link(conns, "Telegram Trigger", "Is /reset?")
     link(conns, "Is /reset?", "Assistant", src_index=1)
     link(conns, "Assistant", "Send reply")
-    chat_id = "={{ $('Telegram Trigger').item.json.message.chat.id }}"
 
-    if variant == "twigg":
+    if variant in ("agent", "twigg"):
         nodes.append(node("Forget conversation", f"{TWIGG_PREFIX}.twigg", 1, [480, -60], {
             "resource": "chat", "operation": "delete", "chatId": chat_id}))
         link(conns, "Is /reset?", "Forget conversation", src_index=0)
         link(conns, "Forget conversation", "Confirm reset")
-        nodes.append(twigg_model([480, 420], chat_id, "telegram-bot"))
-        link(conns, "Twigg Chat Model", "Assistant", "ai_languageModel")
+        holder = "Assistant"
+        if variant == "twigg":
+            nodes.append(twigg_model([480, 420], chat_id, "telegram-bot"))
+            link(conns, "Twigg Chat Model", "Assistant", "ai_languageModel")
+            holder = "Twigg Chat Model"
         nodes.append(sticky("Note", (
-            "## Telegram bot with Twigg\n"
+            f"## Telegram bot on the {VARIANT_LABELS[variant]}\n"
             "1. Add your Telegram bot token to the trigger and the two Telegram nodes.\n"
-            "2. Add your Twigg API key to **Twigg Chat Model** and **Forget conversation**.\n\n"
+            f"2. Add your Twigg API key to **{holder}** and **Forget conversation**.\n\n"
             "Each Telegram chat is its own conversation (Chat ID = the Telegram chat id). "
             "`/reset` deletes it on Twigg; the next message starts fresh."), [-420, -40], 380, 320, 4))
     else:
@@ -317,10 +353,10 @@ def telegram_bot(variant):
             "You need a Postgres database and credential, and the reset query has to match the table "
             "and session id format the memory node uses.\n\n"
             "See `../twigg/telegram-bot.json` for the same bot on Twigg."), [-420, -40], 380, 320, 3))
-    return workflow(f"Telegram bot ({'Twigg' if variant == 'twigg' else 'classic: OpenAI + Postgres memory'})", nodes, conns)
+    return workflow(f"Telegram bot ({VARIANT_LABELS.get(variant, 'classic: OpenAI + Postgres memory')})", nodes, conns)
 
 
-for variant, folder in (("twigg", "twigg"), ("classic", "without-twigg")):
+for variant, folder in (("agent", "twigg-agent"), ("twigg", "twigg"), ("classic", "without-twigg")):
     (OUT / folder).mkdir(parents=True, exist_ok=True)
     for fname, build in (("support-bot", support_bot), ("lead-qualifier", lead_qualifier), ("telegram-bot", telegram_bot)):
         (OUT / folder / f"{fname}.json").write_text(json.dumps(build(variant), indent=2, ensure_ascii=False) + "\n")

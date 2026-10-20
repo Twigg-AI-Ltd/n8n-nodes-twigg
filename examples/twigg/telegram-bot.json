@@ -1,5 +1,5 @@
 {
-  "name": "Telegram bot (Twigg)",
+  "name": "Telegram bot (Twigg Chat Model)",
   "nodes": [
     {
       "id": "e2114159-f04d-535c-9f54-644b375ee70a",
@@ -61,11 +61,11 @@
         200
       ],
       "parameters": {
-        "promptType": "define",
-        "text": "={{ $json.message.text }}",
         "options": {
           "systemMessage": "You are a helpful personal assistant on Telegram. Keep replies short. Remember what the user tells you about themselves and use it."
-        }
+        },
+        "promptType": "define",
+        "text": "={{ $json.message.text }}"
       }
     },
     {
@@ -144,7 +144,7 @@
         -40
       ],
       "parameters": {
-        "content": "## Telegram bot with Twigg\n1. Add your Telegram bot token to the trigger and the two Telegram nodes.\n2. Add your Twigg API key to **Twigg Chat Model** and **Forget conversation**.\n\nEach Telegram chat is its own conversation (Chat ID = the Telegram chat id). `/reset` deletes it on Twigg; the next message starts fresh.",
+        "content": "## Telegram bot on the Twigg Chat Model\n1. Add your Telegram bot token to the trigger and the two Telegram nodes.\n2. Add your Twigg API key to **Twigg Chat Model** and **Forget conversation**.\n\nEach Telegram chat is its own conversation (Chat ID = the Telegram chat id). `/reset` deletes it on Twigg; the next message starts fresh.",
         "width": 380,
         "height": 320,
         "color": 4

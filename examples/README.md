@@ -1,21 +1,28 @@
 # Example workflows
 
-Each scenario comes twice: once on Twigg, and once the way most n8n bots are built today (OpenAI
-Chat Model plus a Memory node). The trigger, prompt and tools are identical, so the only difference
-is where the conversation lives. Import a file with **Workflows → Import from File**.
+Each scenario comes three ways: on the **Twigg AI Agent**, on n8n's AI Agent with the **Twigg Chat
+Model**, and the way most n8n bots are built today (OpenAI Chat Model plus a Memory node). The
+trigger, prompt and tools are identical, so the only difference is where the model and the
+conversation live. Import a file with **Workflows → Import from File**.
 
-| Scenario | Twigg | Classic, for comparison |
-|---|---|---|
-| Website support bot: Chat Trigger, order lookup, help-centre search, calculator | [`twigg/support-bot.json`](twigg/support-bot.json) | [`without-twigg/support-bot.json`](without-twigg/support-bot.json) (Simple Memory) |
-| WhatsApp lead qualifier: webhook keyed by phone number, calendar check, CRM save | [`twigg/lead-qualifier.json`](twigg/lead-qualifier.json) | [`without-twigg/lead-qualifier.json`](without-twigg/lead-qualifier.json) (Postgres memory) |
-| Telegram bot with a `/reset` command | [`twigg/telegram-bot.json`](twigg/telegram-bot.json) | [`without-twigg/telegram-bot.json`](without-twigg/telegram-bot.json) (Postgres memory + SQL reset) |
-| Smallest possible: Manual Trigger, Agent, Calculator | [`agent-with-calculator.json`](agent-with-calculator.json) | |
+| Scenario | Twigg AI Agent | AI Agent + Twigg Chat Model | Classic, for comparison |
+|---|---|---|---|
+| Website support bot: Chat Trigger, order lookup, help-centre search, calculator | [`twigg-agent/support-bot.json`](twigg-agent/support-bot.json) | [`twigg/support-bot.json`](twigg/support-bot.json) | [`without-twigg/support-bot.json`](without-twigg/support-bot.json) (Simple Memory) |
+| WhatsApp lead qualifier: webhook keyed by phone number, calendar check, CRM save | [`twigg-agent/lead-qualifier.json`](twigg-agent/lead-qualifier.json) | [`twigg/lead-qualifier.json`](twigg/lead-qualifier.json) | [`without-twigg/lead-qualifier.json`](without-twigg/lead-qualifier.json) (Postgres memory) |
+| Telegram bot with a `/reset` command | [`twigg-agent/telegram-bot.json`](twigg-agent/telegram-bot.json) | [`twigg/telegram-bot.json`](twigg/telegram-bot.json) | [`without-twigg/telegram-bot.json`](without-twigg/telegram-bot.json) (Postgres memory + SQL reset) |
+| Smallest possible: Manual Trigger, Agent, Calculator | | [`agent-with-calculator.json`](agent-with-calculator.json) | |
 
 The tools are Code tools returning demo data, so the support bot and lead qualifier run as soon as
 the credentials are set. Each workflow has a sticky note with what to set up. The Telegram bots need a
 bot token.
 
 ## Moving an existing workflow to Twigg
+
+To the **Twigg AI Agent**: add one, connect the same trigger, tools and output, copy the system
+message, set **Chat ID** to the Memory node's session key, then delete the old AI Agent, Chat Model
+and Memory nodes.
+
+To the **Twigg Chat Model**, keeping n8n's AI Agent:
 
 1. Delete the Memory node attached to the AI Agent.
 2. Replace the Chat Model node with **Twigg Chat Model** and add your Twigg API key.
@@ -27,6 +34,9 @@ Prompt, tools and the rest of the workflow stay as they are.
 ## What the comparison shows
 
 We ran each pair side by side on n8n 2.44.4 with the same scripted conversations.
+
+The table below was measured with the Twigg Chat Model. The Twigg AI Agent was run through the recall,
+lead-qualifier and queue-mode tests (turns on different workers, then a restart of both) with the same results.
 
 | | Twigg | Simple Memory | Postgres Chat Memory |
 |---|---|---|---|

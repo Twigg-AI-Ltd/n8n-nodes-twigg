@@ -1,21 +1,14 @@
 import { getParametersJsonSchema, supplyModel } from '@n8n/ai-node-sdk';
-import type {
-	ILoadOptionsFunctions,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	ISupplyDataFunctions,
-	SupplyData,
-} from 'n8n-workflow';
-import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import type { INodeType, INodeTypeDescription, ISupplyDataFunctions, SupplyData } from 'n8n-workflow';
+import { NodeConnectionTypes } from 'n8n-workflow';
 
 import { TwiggChatModel } from './TwiggChatModel';
+import { resolveChatId } from '../shared/chat-id';
 import { DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
 import { chatTitleFor, resolveExternalId } from '../shared/ids';
+import { DEFAULT_MODEL, loadModelOptions } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
 import type { ReasoningEffort } from '../shared/types';
-
-export const DEFAULT_MODEL = 'claude-haiku-5-5';
 
 type ModelOptions = {
 	namespace?: string;
@@ -195,21 +188,7 @@ export class LmChatTwigg implements INodeType {
 
 	methods = {
 		loadOptions: {
-			async getModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				const credentials = await loadCredentials(this);
-				const client = new TwiggClient({
-					request: makeN8nRequest(this, credentials.baseUrl!, 30_000),
-				});
-				const models = await client.listModels();
-				return models
-					.filter((model) => model.supports_tools)
-					.map((model) => ({
-						name: `${model.display_name} (${model.provider_label})`,
-						value: model.name,
-						description: `${model.name}: ${model.rates?.input ?? '?'} in / ${model.rates?.output ?? '?'} out per million tokens`,
-					}))
-					.sort((a, b) => a.name.localeCompare(b.name));
-			},
+			getModels: loadModelOptions,
 		},
 	};
 
@@ -261,37 +240,4 @@ export class LmChatTwigg implements INodeType {
 
 		return supplyModel(this, chatModel);
 	}
-}
-
-/**
- * Reads the Chat ID parameter. When it resolves to nothing, falls back to the sessionId of a
- * Chat Trigger in the workflow, the way n8n's own memory nodes do, before failing with an
- * explanation.
- */
-function resolveChatId(ctx: ISupplyDataFunctions, itemIndex: number): string {
-	let raw = ctx.getNodeParameter('chatId', itemIndex, '') as unknown;
-	if (raw === '' || raw === undefined || raw === null) {
-		try {
-			const chatTrigger = ctx.getChatTrigger();
-			if (chatTrigger) {
-				raw = ctx.evaluateExpression(`{{ $('${chatTrigger.name}').first().json.sessionId }}`, itemIndex);
-			}
-		} catch {
-			// No chat trigger, or its data is not available: fall through to the error below.
-		}
-	}
-	if (raw === '' || raw === undefined || raw === null) {
-		throw new NodeOperationError(ctx.getNode(), 'No Chat ID found', {
-			description:
-				"Set 'Chat ID' to what identifies the conversation, such as {{ $json.sessionId }} from a Chat Trigger, or the sender's id from your messaging platform.",
-			itemIndex,
-		});
-	}
-	if (typeof raw === 'object') {
-		throw new NodeOperationError(ctx.getNode(), 'Chat ID must be text or a number', {
-			description: `Chat ID resolved to ${JSON.stringify(raw)}. Point it at a single field, such as {{ $json.sessionId }}.`,
-			itemIndex,
-		});
-	}
-	return String(raw);
 }

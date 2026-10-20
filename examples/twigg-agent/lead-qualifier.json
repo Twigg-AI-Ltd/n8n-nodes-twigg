@@ -1,0 +1,164 @@
+{
+  "name": "WhatsApp lead qualifier (Twigg AI Agent)",
+  "nodes": [
+    {
+      "id": "02af59c4-01de-5a5a-bff8-6a570acecb75",
+      "name": "Incoming WhatsApp message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-qualifier-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "6875b51a-1456-5394-b590-8d42f2181006"
+    },
+    {
+      "id": "9f07cf2c-f7c9-5189-b5e7-d4e2a3e17ce2",
+      "name": "Lead Agent",
+      "type": "n8n-nodes-twigg.twiggAgent",
+      "typeVersion": 1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "model": "claude-haiku-5-5",
+        "text": "={{ $json.body.text }}",
+        "chatId": "={{ $('Incoming WhatsApp message').item.json.body.from }}",
+        "systemMessage": "You qualify inbound sales leads for Twigg Analytics over WhatsApp. Keep every reply under 40 words. Find out, one question at a time: the person's name, company, team size and monthly budget. When you have all four, offer a demo using check_availability, and once they pick a slot call save_lead with everything you collected. Do not ask for anything they already told you.",
+        "options": {
+          "namespace": "lead-qualifier",
+          "hashChatId": true
+        }
+      }
+    },
+    {
+      "id": "2438e8b0-08b9-5a50-82f5-b8dc8d16dce0",
+      "name": "Check Availability",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        460,
+        260
+      ],
+      "parameters": {
+        "name": "check_availability",
+        "description": "Free demo slots this week. Optionally filter by weekday.",
+        "language": "javaScript",
+        "jsCode": "\n// Demo calendar. In production: Google Calendar / Cal.com node or an HTTP Request.\nconst day = String(query.day || 'any').toLowerCase();\nconst slots = { monday: ['10:00', '14:30'], tuesday: ['09:00', '11:00', '16:00'], wednesday: [], thursday: ['13:00'], friday: ['10:30', '15:00'] };\nif (day in slots) return JSON.stringify({ day, free_slots: slots[day] });\nreturn JSON.stringify({ free_slots_this_week: slots });\n",
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"day\": {\n      \"type\": \"string\",\n      \"description\": \"Weekday, e.g. tuesday, or 'any'\"\n    }\n  }\n}"
+      }
+    },
+    {
+      "id": "e0244f11-371f-55ed-a472-f472cd692285",
+      "name": "Save Lead",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        620,
+        260
+      ],
+      "parameters": {
+        "name": "save_lead",
+        "description": "Save a qualified lead and their booked demo slot to the CRM.",
+        "language": "javaScript",
+        "jsCode": "\n// Demo CRM write. In production: HubSpot / Pipedrive / Airtable node or an HTTP Request.\nconst lead = { name: query.name, company: query.company, team_size: query.team_size, budget: query.budget,\n  meeting: query.meeting || null, saved_at: new Date().toISOString() };\nreturn JSON.stringify({ ok: true, lead_id: 'L-' + Math.abs([...JSON.stringify(lead)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)), lead });\n",
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"company\": {\n      \"type\": \"string\"\n    },\n    \"team_size\": {\n      \"type\": \"number\"\n    },\n    \"budget\": {\n      \"type\": \"string\"\n    },\n    \"meeting\": {\n      \"type\": \"string\",\n      \"description\": \"Booked slot, e.g. 'tuesday 11:00'\"\n    }\n  },\n  \"required\": [\n    \"name\",\n    \"company\",\n    \"team_size\",\n    \"budget\"\n  ]\n}"
+      }
+    },
+    {
+      "id": "03cc191f-3e58-50df-aab0-406e6b1303de",
+      "name": "Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        640,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"to\": $('Incoming WhatsApp message').item.json.body.from, \"reply\": $json.output } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "0138b0f4-4d9c-5239-adbb-ff4b768be556",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -40
+      ],
+      "parameters": {
+        "content": "## Lead qualifier on the Twigg AI Agent\nPoint your WhatsApp provider (Twilio, 360dialog, WhatsApp Cloud API) at this webhook, or test with:\n`POST {\"from\": \"+447700900123\", \"text\": \"Hi\"}`\n\n**Chat ID** is the sender's phone number, so each person is one conversation. **Hash Chat ID** is on: Twigg only ever sees a hash of the number.\n\nNo database, no Memory node, no Chat Model node.",
+        "width": 380,
+        "height": 380,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Incoming WhatsApp message": {
+      "main": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Agent": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Availability": {
+      "ai_tool": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead": {
+      "ai_tool": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
