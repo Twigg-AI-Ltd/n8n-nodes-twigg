@@ -8,7 +8,8 @@ import type {
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import { TwiggClient } from '../shared/client';
-import { importFromMemory, isImportUnavailable } from '../shared/history-import';
+import { TwiggApiError } from '../shared/errors';
+import { importFromMemory, isImportUnavailable, MAX_IMPORT_PARTS } from '../shared/history-import';
 import { chatTitleFor, resolveExternalId } from '../shared/ids';
 import { DEFAULT_NAMESPACE } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
@@ -34,8 +35,8 @@ export class Twigg implements INodeType {
 		defaults: {
 			name: 'Twigg',
 		},
-		// Import History reads from an n8n Memory node, so that operation gets a Memory input.
-		inputs: `={{ $parameter.resource === 'chat' && $parameter.operation === 'importHistory' ? ['main', { type: 'ai_memory', displayName: 'Memory', required: true, maxConnections: 1 }] : ['main'] }}`,
+		// Import All reads from an n8n Memory node, so that operation gets an External Memory input.
+		inputs: `={{ $parameter.resource === 'chat' && $parameter.operation === 'importAll' ? ['main', { type: 'ai_memory', displayName: 'External Memory', required: true, maxConnections: 1 }] : ['main'] }}`,
 		outputs: [NodeConnectionTypes.Main],
 		usableAsTool: true,
 		credentials: [
@@ -88,11 +89,11 @@ export class Twigg implements INodeType {
 						action: 'Get the history of a chat',
 					},
 					{
-						name: 'Import History',
-						value: 'importHistory',
+						name: 'Import All',
+						value: 'importAll',
 						description:
-							'Copy a conversation from an n8n Memory node into Twigg, if the chat has no history on Twigg yet',
-						action: 'Import a chat history from memory',
+							'Move every conversation from an external Memory node to Twigg, one per input item. Chats already on Twigg are skipped, so it is safe to run again.',
+						action: 'Import all chats from external memory',
 					},
 					{
 						name: 'Open',
@@ -121,11 +122,11 @@ export class Twigg implements INodeType {
 			},
 			{
 				displayName:
-					'Imports one conversation per input item. Feed it one item per old session, for example from a Postgres node running SELECT DISTINCT session_id FROM n8n_chat_histories, and set the connected Memory node\'s session key to the same field. A chat that already has history on Twigg is left as it is, so running this twice is safe. The old memory is only read.',
+					'Imports one conversation per input item. Feed it one item per session, for example from a Postgres node running SELECT DISTINCT session_id FROM n8n_chat_histories, and set the external Memory node\'s session key to the same field. Chats already on Twigg are skipped and not charged again, so if some fail (for example when the balance runs out), fix the cause and run it again. The external memory is only read.',
 				name: 'importNotice',
 				type: 'notice',
 				default: '',
-				displayOptions: { show: { resource: ['chat'], operation: ['importHistory'] } },
+				displayOptions: { show: { resource: ['chat'], operation: ['importAll'] } },
 			},
 			{
 				displayName: 'Chat ID',
@@ -133,7 +134,7 @@ export class Twigg implements INodeType {
 				type: 'string',
 				default: '={{ $json.sessionId }}',
 				required: true,
-				displayOptions: { show: { resource: ['chat'] }, hide: { operation: ['importHistory'] } },
+				displayOptions: { show: { resource: ['chat'] }, hide: { operation: ['importAll'] } },
 				description: 'The same Chat ID the Twigg AI Agent or Twigg Chat Model uses for this conversation',
 			},
 			{
@@ -142,7 +143,7 @@ export class Twigg implements INodeType {
 				type: 'string',
 				default: '={{ $json.session_id }}',
 				required: true,
-				displayOptions: { show: { resource: ['chat'], operation: ['importHistory'] } },
+				displayOptions: { show: { resource: ['chat'], operation: ['importAll'] } },
 				description:
 					'The Chat ID the conversation will have on Twigg: the value your Twigg AI Agent or Twigg Chat Model uses as Chat ID, usually the old session ID',
 			},
@@ -160,7 +161,7 @@ export class Twigg implements INodeType {
 				name: 'namespace',
 				type: 'string',
 				default: DEFAULT_NAMESPACE,
-				displayOptions: { show: { resource: ['chat'], operation: ['open', 'importHistory'] } },
+				displayOptions: { show: { resource: ['chat'], operation: ['open', 'importAll'] } },
 				description:
 					'The namespace to create the chat in: the same Namespace your Twigg AI Agent or Twigg Chat Model uses',
 			},
@@ -232,6 +233,10 @@ export class Twigg implements INodeType {
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operation = this.getNodeParameter('operation', 0) as string;
 
+		if (resource === 'chat' && operation === 'importAll') {
+			return [await importAll(this, client, items.length)];
+		}
+
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			try {
 				const results = await runOperation(this, client, resource, operation, itemIndex);
@@ -299,41 +304,6 @@ async function runOperation(
 			});
 			return [{ ...(chat as unknown as IDataObject), created }];
 		}
-		case 'importHistory': {
-			const memory = await ctx.getInputConnectionData(NodeConnectionTypes.AiMemory, itemIndex);
-			if (!memory) {
-				throw new NodeOperationError(ctx.getNode(), 'No Memory node connected', {
-					description: 'Connect the Memory node your old agent used to the Memory input.',
-					itemIndex,
-				});
-			}
-			const namespace = String(ctx.getNodeParameter('namespace', itemIndex, DEFAULT_NAMESPACE) ?? '').trim();
-			const title = chatId.hashed ? undefined : chatTitleFor(chatId.raw);
-			try {
-				const outcome = await importFromMemory(
-					client,
-					externalId,
-					{ ...(namespace ? { namespace } : {}), ...(title ? { title } : {}) },
-					memory,
-				);
-				return [
-					{
-						chat_id: externalId,
-						status: outcome.status,
-						messages_read: outcome.parts,
-						...(outcome.status === 'empty' ? {} : (outcome.response as unknown as IDataObject)),
-					},
-				];
-			} catch (error) {
-				throw isImportUnavailable(error)
-					? new NodeOperationError(ctx.getNode(), "Twigg's history import isn't available yet", {
-							description:
-								'This Twigg API does not have the import endpoint yet. Nothing was changed; run this again once it is live.',
-							itemIndex,
-						})
-					: toNodeError(ctx.getNode(), error, itemIndex);
-			}
-		}
 		case 'delete':
 			await client.deleteChatByExternalId(externalId);
 			return [{ deleted: true, chat_id: externalId }];
@@ -354,4 +324,125 @@ async function runOperation(
 		default:
 			throw new NodeOperationError(ctx.getNode(), `Unknown operation "${operation}"`, { itemIndex });
 	}
+}
+
+type ImportStatus = 'imported' | 'skipped' | 'empty' | 'failed' | 'not_attempted';
+
+/** Errors after which every remaining import would fail the same way, so the run stops sending. */
+const STOP_CODES: Record<string, string> = {
+	payment_required: 'The Twigg balance ran out. Top up in the Twigg console, then run this again.',
+	http_401: 'Twigg rejected the API key. Check the Twigg credential, then run this again.',
+};
+
+/**
+ * Import All: one conversation per input item, then a summary on the node. Per-chat problems don't
+ * fail the node; each item reports its status. A re-run only imports what is left, because Twigg
+ * skips (and doesn't charge for) chats that already have history.
+ */
+async function importAll(ctx: IExecuteFunctions, client: TwiggClient, itemCount: number): Promise<INodeExecutionData[]> {
+	const output: INodeExecutionData[] = [];
+	const counts: Record<ImportStatus, number> = { imported: 0, skipped: 0, empty: 0, failed: 0, not_attempted: 0 };
+	let stopped: { code: string; message: string } | undefined;
+	let cost = 0;
+	let truncated = 0;
+
+	for (let itemIndex = 0; itemIndex < itemCount; itemIndex++) {
+		let chatId = '';
+		let json: IDataObject;
+		try {
+			const resolved = chatIdFor(ctx, itemIndex);
+			chatId = resolved.id;
+			if (stopped) {
+				json = { chat_id: chatId, status: 'not_attempted', error: stopped };
+			} else {
+				const memory = await ctx.getInputConnectionData(NodeConnectionTypes.AiMemory, itemIndex);
+				if (!memory) {
+					throw new NodeOperationError(ctx.getNode(), 'No external memory connected', {
+						description: 'Connect the Memory node your old agent used to the External Memory input.',
+						itemIndex,
+					});
+				}
+				const namespace = String(ctx.getNodeParameter('namespace', itemIndex, DEFAULT_NAMESPACE) ?? '').trim();
+				const title = resolved.hashed ? undefined : chatTitleFor(resolved.raw);
+				const outcome = await importFromMemory(
+					client,
+					chatId,
+					{ ...(namespace ? { namespace } : {}), ...(title ? { title } : {}) },
+					memory,
+				);
+				json = { chat_id: chatId, status: outcome.status, messages_sent: outcome.sent };
+				if (outcome.status !== 'empty') {
+					Object.assign(json, outcome.response as unknown as IDataObject, { chat_id: chatId, status: outcome.status });
+					cost += Number(outcome.response.cost ?? 0) || 0;
+				}
+				if (outcome.leftOut > 0) {
+					json.older_messages_left_out = outcome.leftOut;
+					truncated += 1;
+				}
+			}
+		} catch (error) {
+			if (isImportUnavailable(error)) {
+				throw new NodeOperationError(ctx.getNode(), "Twigg's history import isn't available yet", {
+					description:
+						'This Twigg API does not have the import endpoint yet. Nothing was changed; run this again once it is live.',
+					itemIndex,
+				});
+			}
+			if (error instanceof NodeOperationError && error.message === 'No external memory connected') {
+				throw toNodeError(ctx.getNode(), error, itemIndex);
+			}
+			const code = error instanceof TwiggApiError ? error.code : 'error';
+			const message = error instanceof TwiggApiError ? error.description : (error as Error).message;
+			json = { chat_id: chatId, status: 'failed', error: { code, message } };
+			if (STOP_CODES[code]) stopped = { code, message: STOP_CODES[code] };
+		}
+		counts[json.status as ImportStatus] += 1;
+		output.push({ json, pairedItem: { item: itemIndex } });
+	}
+
+	ctx.addExecutionHints(...importHints(counts, itemCount, stopped, cost, truncated));
+	return output;
+}
+
+function importHints(
+	counts: Record<ImportStatus, number>,
+	total: number,
+	stopped: { code: string; message: string } | undefined,
+	cost: number,
+	truncated: number,
+): Array<{ message: string; type: 'info' | 'warning'; location: 'outputPane' }> {
+	const done = counts.imported + counts.skipped + counts.empty;
+	const tally = [
+		counts.imported && `${counts.imported} imported`,
+		counts.skipped && `${counts.skipped} already on Twigg`,
+		counts.empty && `${counts.empty} empty`,
+	]
+		.filter(Boolean)
+		.join(', ');
+	const costNote = cost > 0 ? ` Import charge: $${Number(cost.toPrecision(4))}.` : '';
+	const hints: Array<{ message: string; type: 'info' | 'warning'; location: 'outputPane' }> = [];
+
+	if (done === total) {
+		hints.push({
+			type: 'info',
+			location: 'outputPane',
+			message: `All ${total} existing chats are on Twigg (${tally}).${costNote} You're safe to detach the external memory now.`,
+		});
+	} else {
+		const notDone = counts.failed + counts.not_attempted;
+		const reason = stopped ? ` ${stopped.message}` : ' See the error on each failed item.';
+		hints.push({
+			type: 'warning',
+			location: 'outputPane',
+			message: `${notDone} of ${total} chats were not imported.${reason} Running this again is safe: chats already on Twigg are skipped and not charged again, so only these are imported.${tally ? ` So far: ${tally}.` : ''}${costNote} Keep the external memory attached until every chat is on Twigg.`,
+		});
+	}
+	if (truncated > 0) {
+		hints.push({
+			type: 'info',
+			location: 'outputPane',
+			message: `${truncated} chat${truncated === 1 ? ' was' : 's were'} longer than ${MAX_IMPORT_PARTS} messages; the oldest messages beyond that were left out (see older_messages_left_out).`,
+		});
+	}
+	return hints;
 }

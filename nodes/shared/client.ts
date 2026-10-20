@@ -176,17 +176,6 @@ export class TwiggClient {
 		return body;
 	}
 
-	/** Imports past conversation into an empty chat; 200 with `skipped` when it already has history. */
-	async importHistoryByExternalId(
-		externalId: string,
-		request: ImportHistoryRequest,
-	): Promise<{ status: number; body: ImportHistoryResponse }> {
-		return await this.call<ImportHistoryResponse>(
-			{ method: 'POST', path: `/api/v1/chats/external/${encodeExternalId(externalId)}/import`, body: request },
-			[200, 201],
-		);
-	}
-
 	async abortByExternalId(externalId: string): Promise<AbortAccepted> {
 		const { body } = await this.call<AbortAccepted>(
 			{ method: 'POST', path: `/api/v1/chats/external/${encodeExternalId(externalId)}/abort` },
@@ -206,14 +195,44 @@ export class TwiggClient {
 		externalId: string,
 		request: CreateResponseRequest,
 	): Promise<ResponseBody> {
-		const path = `/api/v1/chats/external/${encodeExternalId(externalId)}/responses`;
+		const { body } = await this.callWithWaits<ResponseBody>(
+			{ method: 'POST', path: `/api/v1/chats/external/${encodeExternalId(externalId)}/responses`, body: request },
+			[200],
+			Boolean(request.idempotency_key),
+		);
+		return body;
+	}
+
+	/**
+	 * Imports past conversation into an empty chat: 201 when stored, 200 with `skipped` when the chat
+	 * already had history. Waits out `chat_busy` and 503 like a turn does.
+	 */
+	async importHistoryByExternalId(
+		externalId: string,
+		request: ImportHistoryRequest,
+	): Promise<{ status: number; body: ImportHistoryResponse }> {
+		return await this.callWithWaits<ImportHistoryResponse>(
+			{ method: 'POST', path: `/api/v1/chats/external/${encodeExternalId(externalId)}/import`, body: request },
+			[200, 201],
+			false,
+		);
+	}
+
+	/** One request, waiting and retrying while the API says to come back later. */
+	private async callWithWaits<T>(
+		spec: HttpRequestSpec,
+		okStatuses: number[],
+		retryTimeouts: boolean,
+	): Promise<{ status: number; body: T }> {
 		let waitedSeconds = 0;
 		let waits = 0;
 		let timeoutRetries = 0;
 
 		for (;;) {
-			const response = await this.request({ method: 'POST', path, body: request });
-			if (response.statusCode === 200) return response.body as ResponseBody;
+			const response = await this.request(spec);
+			if (okStatuses.includes(response.statusCode)) {
+				return { status: response.statusCode, body: response.body as T };
+			}
 
 			const error = this.toError(response);
 
@@ -231,9 +250,9 @@ export class TwiggClient {
 			}
 
 			if (
+				retryTimeouts &&
 				error.status === 504 &&
 				error.code === 'response_timeout' &&
-				request.idempotency_key &&
 				timeoutRetries < this.policy.timeoutRetries
 			) {
 				timeoutRetries += 1;

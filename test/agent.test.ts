@@ -15,7 +15,7 @@ function harness({
 	tools = [] as Array<{ node: string; tool: Tool | { tools: Tool[] } }>,
 	options = {} as Record<string, unknown>,
 	continueOnFail = false,
-	importHistory = false,
+	useExternalMemory = false,
 	memory = undefined as unknown,
 	otherRoutes = (() => undefined) as (req: { method: string; url: string; body?: unknown }) => { statusCode: number; body: unknown } | undefined,
 }: {
@@ -24,7 +24,7 @@ function harness({
 	tools?: Array<{ node: string; tool: Tool | { tools: Tool[] } }>;
 	options?: Record<string, unknown>;
 	continueOnFail?: boolean;
-	importHistory?: boolean;
+	useExternalMemory?: boolean;
 	memory?: unknown;
 	otherRoutes?: (req: { method: string; url: string; body?: unknown }) => { statusCode: number; body: unknown } | undefined;
 }) {
@@ -36,7 +36,7 @@ function harness({
 		model: 'claude-haiku-5-5',
 		systemMessage: 'Be brief.',
 		options,
-		importHistory,
+		useExternalMemory,
 	};
 	const ctx = {
 		getInputData: () => items,
@@ -52,7 +52,7 @@ function harness({
 		getParentNodes: () => tools.map((t) => ({ name: t.node, disabled: false })),
 		getChatTrigger: () => null,
 		continueOnFail: () => continueOnFail,
-		logger: { debug: () => {}, warn: (message: string) => warnings.push(message) },
+		logger: { debug: () => {}, info: () => {}, warn: (message: string) => warnings.push(message) },
 		helpers: {
 			httpRequestWithAuthentication: async (
 				_cred: string,
@@ -241,7 +241,7 @@ describe('TwiggAgent', () => {
 	});
 });
 
-describe('TwiggAgent history import', () => {
+describe('TwiggAgent with Use External Memory', () => {
 	const oldMemory = {
 		chatHistory: {
 			getMessages: async () => [
@@ -255,7 +255,7 @@ describe('TwiggAgent history import', () => {
 	it('imports the old conversation before the first message of a new chat', async () => {
 		const { run, requests, otherCalls } = harness({
 			responses: [endTurnResponse],
-			importHistory: true,
+			useExternalMemory: true,
 			memory: oldMemory,
 			otherRoutes: (req) =>
 				req.method === 'GET' ? notFound : { statusCode: 201, body: { chat_id: 'c1', created_chat: true, imported_parts: 2 } },
@@ -278,7 +278,7 @@ describe('TwiggAgent history import', () => {
 	it('leaves a chat that already has history on Twigg alone', async () => {
 		const { run, otherCalls } = harness({
 			responses: [endTurnResponse],
-			importHistory: true,
+			useExternalMemory: true,
 			memory: oldMemory,
 			otherRoutes: () => ({ statusCode: 200, body: { id: 'c1', length: 12 } }),
 		});
@@ -289,7 +289,7 @@ describe('TwiggAgent history import', () => {
 	it('answers anyway when the API has no import endpoint yet', async () => {
 		const { run, warnings, requests } = harness({
 			responses: [endTurnResponse],
-			importHistory: true,
+			useExternalMemory: true,
 			memory: oldMemory,
 			otherRoutes: () => notFound,
 		});
@@ -299,7 +299,7 @@ describe('TwiggAgent history import', () => {
 		expect(warnings.join(' ')).toMatch(/not available on this Twigg API yet/);
 	});
 
-	it('does not look anything up when the import is off', async () => {
+	it('does not look anything up when external memory is off', async () => {
 		const { run, otherCalls } = harness({ responses: [endTurnResponse], memory: oldMemory });
 		await run();
 		expect(otherCalls).toEqual([]);

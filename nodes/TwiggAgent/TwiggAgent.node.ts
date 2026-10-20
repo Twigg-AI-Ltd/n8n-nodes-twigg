@@ -46,12 +46,12 @@ export class TwiggAgent implements INodeType {
 		defaults: {
 			name: 'Twigg AI Agent',
 		},
-		// The Memory (Import) input only exists while "Import History From Old Memory" is on.
-		inputs: `={{ ((importHistory) => [
+		// The External Memory input only exists while "Use External Memory" is on.
+		inputs: `={{ ((useExternalMemory) => [
 			'main',
 			{ type: 'ai_tool', displayName: 'Tool', required: false },
-			...(importHistory ? [{ type: 'ai_memory', displayName: 'Memory (Import)', required: true, maxConnections: 1 }] : []),
-		])($parameter.importHistory) }}`,
+			...(useExternalMemory ? [{ type: 'ai_memory', displayName: 'External Memory', required: true, maxConnections: 1 }] : []),
+		])($parameter.useExternalMemory) }}`,
 		outputs: [NodeConnectionTypes.Main],
 		usableAsTool: true,
 		credentials: [
@@ -116,21 +116,21 @@ export class TwiggAgent implements INodeType {
 				description: 'Instructions sent with every message. Not stored as conversation history, so it can be changed at any time.',
 			},
 			{
-				displayName: 'Import History From Old Memory',
-				name: 'importHistory',
+				displayName: 'Use External Memory',
+				name: 'useExternalMemory',
 				type: 'boolean',
 				default: false,
 				noDataExpression: true,
 				description:
-					'Whether to bring over conversations from the Memory node your agent used before. Adds a Memory (Import) input: connect the old Memory node to it.',
+					'Whether to carry on the conversations kept in the Memory node your agent used before (Postgres, Redis and so on). Adds an External Memory input: connect that Memory node to it.',
 			},
 			{
 				displayName:
-					'Each conversation is imported once, the first time it gets a message here: its full history is read from the connected Memory node and stored on Twigg. The old memory is only read, never changed. Once your active conversations have moved over, turn this off and delete the Memory node.',
-				name: 'importNotice',
+					'Each conversation moves to Twigg the first time it gets a message here: its history is read from the external memory and imported, then the agent answers. The external memory is only read, never changed. To move every conversation now, use the Twigg node\'s Import All. Once all of them are on Twigg, turn this off and detach the external memory.',
+				name: 'externalMemoryNotice',
 				type: 'notice',
 				default: '',
-				displayOptions: { show: { importHistory: [true] } },
+				displayOptions: { show: { useExternalMemory: [true] } },
 			},
 			{
 				displayName: 'Options',
@@ -275,7 +275,7 @@ export class TwiggAgent implements INodeType {
 				}
 
 				const item = await prepareItem(this, itemIndex, credentials.baseUrl!);
-				if (!resumed && this.getNodeParameter('importHistory', itemIndex, false) === true) {
+				if (!resumed && this.getNodeParameter('useExternalMemory', itemIndex, false) === true) {
 					await importOldHistory(this, item, itemIndex);
 				}
 				const result = await runTurns(this, item, itemIndex, current, input);
@@ -341,19 +341,27 @@ async function prepareItem(ctx: IExecuteFunctions, itemIndex: number, baseUrl: s
 }
 
 /**
- * The lazy import: before a chat's first message on Twigg, copy its history from the old Memory
- * node. Never stops the message from being answered: problems are logged and the turn goes ahead.
+ * Use External Memory: before a chat's first message on Twigg, import its history from the external
+ * Memory node. Never stops the message from being answered: problems are logged and the turn goes ahead.
  */
 async function importOldHistory(ctx: IExecuteFunctions, item: ItemContext, itemIndex: number): Promise<void> {
 	try {
 		if (!(await chatIsEmpty(item.client, item.externalId))) return;
 		const memory = await ctx.getInputConnectionData(NodeConnectionTypes.AiMemory, itemIndex);
 		if (!memory) {
-			ctx.logger.warn('Twigg AI Agent: "Import History From Old Memory" is on but no Memory node is connected');
+			ctx.logger.warn('Twigg AI Agent: "Use External Memory" is on but no Memory node is connected');
 			return;
 		}
 		const outcome = await importFromMemory(item.client, item.externalId, item.chat, memory);
-		ctx.logger.debug('Twigg AI Agent: history import', { chat: item.externalId, status: outcome.status, parts: outcome.parts });
+		const response = outcome.status === 'empty' ? undefined : outcome.response;
+		ctx.logger.info('Twigg AI Agent: imported history from external memory', {
+			chat: item.externalId,
+			status: outcome.status,
+			parts: outcome.sent,
+			leftOutOlderParts: outcome.leftOut,
+			cost: response?.cost,
+			warnings: response?.warnings?.length ?? 0,
+		});
 	} catch (error) {
 		if (isImportUnavailable(error)) {
 			ctx.logger.warn('Twigg AI Agent: history import is not available on this Twigg API yet; answering without it');

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- History import from n8n Memory nodes: **Import History From Old Memory** on the Twigg AI Agent moves each conversation over on its first message; **Twigg → Chat → Import History** moves them in bulk. Waits on the Twigg import endpoint, which is not live yet: until then the agent answers without importing.
+- Existing conversations from n8n Memory nodes: **Use External Memory** on the Twigg AI Agent moves each conversation to Twigg on its first message; **Twigg → Chat → Import All** moves them all at once, reports each chat's status, stops if the balance runs out, and can be re-run safely. Uses the Twigg import endpoint, which is not live yet: until then the agent answers without importing.
 - **Namespace** is now a visible setting on the Twigg AI Agent and Twigg Chat Model, defaulting to `n8n`.
 - Model prices in the model list read `$0.105` instead of `0.105000000000`.
 - **Twigg AI Agent** node: an AI agent with a Tool input and no Chat Model or Memory input. Twigg runs the model and keeps the conversation; n8n runs the tool nodes. Examples in `examples/twigg-agent/`.

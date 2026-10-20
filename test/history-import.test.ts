@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MAX_IMPORT_PARTS, readMemoryMessages, toImportParts } from '../nodes/shared/history-import';
+import { capParts, MAX_IMPORT_PARTS, readMemoryMessages, toImportParts } from '../nodes/shared/history-import';
 import { formatRate } from '../nodes/shared/models';
 
 /** A LangChain-style stored message: a class instance with getType(). */
@@ -38,7 +38,7 @@ describe('toImportParts', () => {
 		expect(parts).toEqual([
 			{ type: 'prompt', text: 'Hi' },
 			{ type: 'message', text: 'Checking.' },
-			{ type: 'tool_call', tool_use_id: 'c9', name: 'search', arguments: '{"q":"x"}' },
+			{ type: 'tool_call', tool_use_id: 'c9', name: 'search', arguments: { q: 'x' } },
 			{ type: 'tool_result', tool_use_id: 'c9', tool_name: 'search', text: 'found' },
 		]);
 	});
@@ -54,9 +54,25 @@ describe('toImportParts', () => {
 
 	it('keeps the newest parts when the history is over the import cap', () => {
 		const many = Array.from({ length: MAX_IMPORT_PARTS + 5 }, (_, i) => msg('human', { content: `m${i}` }));
-		const parts = toImportParts(many);
+		const { parts, leftOut } = capParts(toImportParts(many));
+		expect(MAX_IMPORT_PARTS).toBe(500);
 		expect(parts).toHaveLength(MAX_IMPORT_PARTS);
+		expect(leftOut).toBe(5);
 		expect(parts[0]).toEqual({ type: 'prompt', text: 'm5' });
+	});
+
+	it('keeps every part within the endpoint field limits', () => {
+		const longId = 'x'.repeat(300);
+		const parts = toImportParts([
+			msg('human', { content: 'a'.repeat(600_000) }),
+			msg('ai', { content: '', tool_calls: [{ id: longId, name: 'n'.repeat(200), args: 'not json' }] }),
+			msg('tool', { content: 'ok', tool_call_id: longId }),
+		]);
+		expect((parts[0] as { text: string }).text.length).toBe(500_000);
+		expect((parts[0] as { text: string }).text).toMatch(/\[truncated on import\]$/);
+		expect(parts[1]).toMatchObject({ tool_use_id: 'imported_call_1', arguments: { input: 'not json' } });
+		expect((parts[1] as { name: string }).name).toHaveLength(128);
+		expect(parts[2]).toMatchObject({ type: 'tool_result', tool_use_id: 'imported_call_1', text: 'ok' });
 	});
 });
 

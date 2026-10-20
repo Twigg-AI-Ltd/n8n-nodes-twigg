@@ -168,10 +168,7 @@ export type AbortAccepted = {
 	status: string;
 };
 
-/**
- * History import (POST /api/v1/chats/external/{external_id}/import). Not live on the API yet: the
- * shapes follow the agreed spec, and callers treat 404/405 as "not available".
- */
+/** History import: POST /api/v1/chats/external/{external_id}/import. */
 export type ImportPart =
 	| { type: 'prompt'; text: string; created_at?: string }
 	| { type: 'message'; text: string; created_at?: string }
@@ -186,25 +183,44 @@ export type ImportPart =
 			type: 'tool_result';
 			tool_use_id: string;
 			tool_name: string;
-			text: string;
+			text?: string;
 			is_error?: boolean;
 			created_at?: string;
 	  };
 
+/** No other fields: the endpoint refuses unknown ones (including idempotency_key) with 422. */
 export type ImportHistoryRequest = {
 	chat?: OpenChatRequest;
 	parts: ImportPart[];
-	idempotency_key?: string;
 };
 
+export type ImportWarning = {
+	code:
+		| 'empty_part_dropped'
+		| 'unmatched_tool_result'
+		| 'duplicate_tool_result'
+		| 'empty_tool_result_filled'
+		| 'duplicate_tool_call'
+		| 'tool_call_closed'
+		| 'tool_name_rewritten'
+		| 'tool_results_moved_first'
+		| 'leading_assistant'
+		| string;
+	part_index?: number;
+	message: string;
+};
+
+/** 201 with what was stored and charged, or 200 with `skipped` when the chat already had history. */
 export type ImportHistoryResponse = {
 	chat_id: string;
-	/** True when the chat already had history, so nothing was imported. */
 	skipped?: boolean;
+	existing_parts?: number;
 	created_chat?: boolean;
 	imported_parts?: number;
 	dropped_parts?: number;
 	closed_tool_calls?: string[];
-	compaction?: unknown;
-	warnings?: unknown[];
+	estimated_tokens?: number;
+	cost?: string;
+	cost_currency?: string;
+	warnings?: ImportWarning[];
 };
