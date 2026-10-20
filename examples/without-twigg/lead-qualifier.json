@@ -1,0 +1,216 @@
+{
+  "name": "WhatsApp lead qualifier (classic: OpenAI + Postgres memory)",
+  "nodes": [
+    {
+      "id": "02af59c4-01de-5a5a-bff8-6a570acecb75",
+      "name": "Incoming WhatsApp message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-qualifier-classic",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "8a5e7b5e-75f2-5991-86fd-70f57e0e82f4"
+    },
+    {
+      "id": "9f07cf2c-f7c9-5189-b5e7-d4e2a3e17ce2",
+      "name": "Lead Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.text }}",
+        "options": {
+          "systemMessage": "You qualify inbound sales leads for Twigg Analytics over WhatsApp. Keep every reply under 40 words. Find out, one question at a time: the person's name, company, team size and monthly budget. When you have all four, offer a demo using check_availability, and once they pick a slot call save_lead with everything you collected. Do not ask for anything they already told you."
+        }
+      }
+    },
+    {
+      "id": "2438e8b0-08b9-5a50-82f5-b8dc8d16dce0",
+      "name": "Check Availability",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        460,
+        260
+      ],
+      "parameters": {
+        "name": "check_availability",
+        "description": "Free demo slots this week. Optionally filter by weekday.",
+        "language": "javaScript",
+        "jsCode": "\n// Demo calendar. In production: Google Calendar / Cal.com node or an HTTP Request.\nconst day = String(query.day || 'any').toLowerCase();\nconst slots = { monday: ['10:00', '14:30'], tuesday: ['09:00', '11:00', '16:00'], wednesday: [], thursday: ['13:00'], friday: ['10:30', '15:00'] };\nif (day in slots) return JSON.stringify({ day, free_slots: slots[day] });\nreturn JSON.stringify({ free_slots_this_week: slots });\n",
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"day\": {\n      \"type\": \"string\",\n      \"description\": \"Weekday, e.g. tuesday, or 'any'\"\n    }\n  }\n}"
+      }
+    },
+    {
+      "id": "e0244f11-371f-55ed-a472-f472cd692285",
+      "name": "Save Lead",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        620,
+        260
+      ],
+      "parameters": {
+        "name": "save_lead",
+        "description": "Save a qualified lead and their booked demo slot to the CRM.",
+        "language": "javaScript",
+        "jsCode": "\n// Demo CRM write. In production: HubSpot / Pipedrive / Airtable node or an HTTP Request.\nconst lead = { name: query.name, company: query.company, team_size: query.team_size, budget: query.budget,\n  meeting: query.meeting || null, saved_at: new Date().toISOString() };\nreturn JSON.stringify({ ok: true, lead_id: 'L-' + Math.abs([...JSON.stringify(lead)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)), lead });\n",
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"company\": {\n      \"type\": \"string\"\n    },\n    \"team_size\": {\n      \"type\": \"number\"\n    },\n    \"budget\": {\n      \"type\": \"string\"\n    },\n    \"meeting\": {\n      \"type\": \"string\",\n      \"description\": \"Booked slot, e.g. 'tuesday 11:00'\"\n    }\n  },\n  \"required\": [\n    \"name\",\n    \"company\",\n    \"team_size\",\n    \"budget\"\n  ]\n}"
+      }
+    },
+    {
+      "id": "03cc191f-3e58-50df-aab0-406e6b1303de",
+      "name": "Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        640,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"to\": $('Incoming WhatsApp message').item.json.body.from, \"reply\": $json.output } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "f2cc01da-3ef6-5be6-a194-e762935e2b73",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        100,
+        260
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "51c74bae-37cf-5ea3-a4df-d178236d9591",
+      "name": "Postgres Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.4,
+      "position": [
+        260,
+        260
+      ],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Incoming WhatsApp message').item.json.body.from }}",
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "0138b0f4-4d9c-5239-adbb-ff4b768be556",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -40
+      ],
+      "parameters": {
+        "content": "## Lead qualifier, classic setup (for comparison)\nOpenAI Chat Model + **Postgres Chat Memory** keyed by phone number.\n\nNeeds a Postgres (or Supabase) database and credential; n8n creates the `n8n_chat_histories` table. Phone numbers are stored in plain text. The window keeps the last 10 messages, so details given early in a long chat drop out.\n\nSee `../twigg/lead-qualifier.json` for the same flow on Twigg.",
+        "width": 380,
+        "height": 380,
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "Incoming WhatsApp message": {
+      "main": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Agent": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Availability": {
+      "ai_tool": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead": {
+      "ai_tool": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Lead Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

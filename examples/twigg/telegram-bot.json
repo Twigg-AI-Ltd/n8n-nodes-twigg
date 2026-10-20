@@ -1,0 +1,225 @@
+{
+  "name": "Telegram bot (Twigg)",
+  "nodes": [
+    {
+      "id": "e2114159-f04d-535c-9f54-644b375ee70a",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        100
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "webhookId": "8ff6a14b-1f4a-5e70-beb2-b4ac9721609a"
+    },
+    {
+      "id": "c024ea74-054f-56f4-9202-4d66c079ee1c",
+      "name": "Is /reset?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "856f84c0-75e4-5660-a1fe-4d80fddb2cf9",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/reset",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3712af9f-279f-5d7b-af43-7c099b777115",
+      "name": "Assistant",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "options": {
+          "systemMessage": "You are a helpful personal assistant on Telegram. Keep replies short. Remember what the user tells you about themselves and use it."
+        }
+      }
+    },
+    {
+      "id": "e2c547a3-a0d6-58e8-be7f-cece679b7abc",
+      "name": "Send reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        820,
+        200
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "d166fa30-0040-5071-aaa8-6f7cccddaed7",
+      "name": "Confirm reset",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        820,
+        -60
+      ],
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "Done, I've forgotten our conversation. What can I do for you?",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "a3d1855b-7b91-5225-933c-7f2321804b26",
+      "name": "Forget conversation",
+      "type": "n8n-nodes-twigg.twigg",
+      "typeVersion": 1,
+      "position": [
+        480,
+        -60
+      ],
+      "parameters": {
+        "resource": "chat",
+        "operation": "delete",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}"
+      }
+    },
+    {
+      "id": "2af08557-f13c-5be6-9f46-0d690df7a8bd",
+      "name": "Twigg Chat Model",
+      "type": "n8n-nodes-twigg.lmChatTwigg",
+      "typeVersion": 1,
+      "position": [
+        480,
+        420
+      ],
+      "parameters": {
+        "model": "claude-haiku-5-5",
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "options": {
+          "namespace": "telegram-bot"
+        }
+      }
+    },
+    {
+      "id": "0138b0f4-4d9c-5239-adbb-ff4b768be556",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -40
+      ],
+      "parameters": {
+        "content": "## Telegram bot with Twigg\n1. Add your Telegram bot token to the trigger and the two Telegram nodes.\n2. Add your Twigg API key to **Twigg Chat Model** and **Forget conversation**.\n\nEach Telegram chat is its own conversation (Chat ID = the Telegram chat id). `/reset` deletes it on Twigg; the next message starts fresh.",
+        "width": 380,
+        "height": 320,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is /reset?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is /reset?": {
+      "main": [
+        [
+          {
+            "node": "Forget conversation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Assistant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assistant": {
+      "main": [
+        [
+          {
+            "node": "Send reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forget conversation": {
+      "main": [
+        [
+          {
+            "node": "Confirm reset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twigg Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Assistant",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

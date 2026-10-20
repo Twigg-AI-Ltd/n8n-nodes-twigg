@@ -27,8 +27,8 @@ URL at `https://api.twigg.ai` unless Twigg gave you another host.
 ### Twigg Chat Model (sub-node)
 
 Connect it to the **Chat Model** input of an AI Agent (or an LLM chain). Do **not** connect a
-Memory node: Twigg already holds the conversation, and a Memory node would send it twice. The node
-logs a warning when it notices replayed history.
+Memory node: Twigg already holds the conversation. If one is attached, the node ignores the history it
+replays (only the new message is sent) and logs a warning.
 
 | Parameter | What it does |
 |---|---|
@@ -85,8 +85,44 @@ Operations on the conversations the Chat Model keeps, addressed by the same Chat
 To give users a `/reset` command, add an IF on the text and a **Twigg → Chat → Delete** node with the
 same Chat ID.
 
-`examples/agent-with-calculator.json` is an importable workflow (Manual Trigger → AI Agent → Twigg Chat
-Model + Calculator tool). Run it twice with different messages to see the second run remember the first.
+The full version is [`examples/twigg/telegram-bot.json`](examples/twigg/telegram-bot.json).
+[`examples/`](examples/README.md) has importable workflows for a website support bot, a WhatsApp lead
+qualifier and this Telegram bot, each next to the same bot built with a Memory node, plus how to move an
+existing workflow over in three steps.
+
+## Recommended Twigg settings
+
+Out of the box Twigg keeps every message and every tool result, and compacts only when a chat nears the
+model's context window (up to a million tokens on current models). For bots that call tools or run long
+conversations, give the namespace a context budget and a retention policy so old tool output is trimmed
+and the cost per message levels off. Set them in the [Twigg console](https://twigg.ai/dashboard) or with
+the Twigg CLI (`npx twigg config apply`):
+
+```yaml
+# twigg.config.yaml
+version: 1
+namespaces:
+  support-bot:                      # the Namespace set on the Twigg Chat Model
+    budgets:
+      default: { version: 3, headroom: 0.1, history_mode: summarize, max_history_tokens: 32000 }
+    retention:
+      version: 3
+      media: { default: 0, rules: [] }
+      tools:
+        default:
+          result: { mode: over, over: 300, to: 120, keep: head_and_tail }   # trim long old tool results
+          arguments: { mode: keep }
+        rules: []
+        errors: null
+        mark_truncations: true
+      text: { prompt: { mode: keep }, message: { mode: keep } }
+      reasoning: 0.3
+      verbatim_within: 0.15         # the most recent share of the budget is never trimmed
+      anchor_parts: 0
+```
+
+Trimming only starts once a budget is set: "recent" is measured as a share of the budget, so without one
+the whole conversation counts as recent.
 
 ## Errors
 

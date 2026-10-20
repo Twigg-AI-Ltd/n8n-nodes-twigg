@@ -37,7 +37,8 @@
 	},
 	"files": [
 		"dist",
-		"!dist/tsconfig.tsbuildinfo"
+		"!dist/tsconfig.tsbuildinfo",
+		"!dist/**/*.d.ts"
 	],
 	"n8n": {
 		"n8nNodesApiVersion": 1,

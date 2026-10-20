@@ -1,0 +1,211 @@
+{
+  "name": "Support bot (classic: OpenAI + Simple Memory)",
+  "nodes": [
+    {
+      "id": "e12e0614-813d-5238-9666-522bca439c00",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "public": true,
+        "mode": "hostedChat",
+        "initialMessages": "Hi! I'm the Trailhead Outdoor assistant. Ask me about an order, returns or delivery.",
+        "options": {
+          "title": "Trailhead Outdoor support",
+          "subtitle": "Usually answers in a few seconds"
+        }
+      },
+      "webhookId": "99ed8e2b-620d-57f3-907e-94b9c5455dfe"
+    },
+    {
+      "id": "1c8380df-9b0c-5c35-ba13-931497c5f466",
+      "name": "Support Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "options": {
+          "systemMessage": "You are the customer support assistant for Trailhead Outdoor, an online outdoor-gear shop. Be friendly and brief: at most three sentences. Use lookup_order for anything about an order, search_help_center for policies (returns, delivery, sizing), and the calculator for any arithmetic. Never invent order details."
+        }
+      }
+    },
+    {
+      "id": "2146ce9f-5f57-51d9-9621-f52618c2c845",
+      "name": "Lookup Order",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        420,
+        260
+      ],
+      "parameters": {
+        "name": "lookup_order",
+        "description": "Look up an order by its number. Returns status, items, tracking and shipping details.",
+        "language": "javaScript",
+        "jsCode": "\n// Demo data. In production this would be an HTTP Request to your shop's API.\nconst id = String(query.order_id || '').replace(/[^0-9]/g, '');\nconst orders = {\n  '1042': { status: 'shipped', carrier: 'DPD', eta: '2026-10-24', items: ['Trail running shoes (UK 8)', 'Merino socks x3'] },\n  '1043': { status: 'processing', carrier: null, eta: '2026-10-27', items: ['Waterproof jacket (M)'] },\n  '1044': { status: 'delivered', carrier: 'Royal Mail', eta: '2026-10-15', items: ['Headtorch', 'Spare batteries'] },\n};\nconst order = orders[id];\nif (!order) return JSON.stringify({ error: `No order ${id} found. Ask the customer to check the number.` });\n// Real order APIs return far more than the agent needs: full tracking history, addresses, line detail.\nconst events = Array.from({ length: 18 }, (_, i) => ({\n  at: `2026-10-${String(10 + Math.floor(i / 2)).padStart(2, '0')}T${String(6 + i).padStart(2, '0')}:15:00Z`,\n  location: ['Leeds hub', 'Manchester depot', 'Birmingham sort centre', 'Local delivery office'][i % 4],\n  event: ['Label created', 'Collected', 'In transit', 'Arrived at depot', 'Sorted', 'Out for delivery'][i % 6],\n  scan_id: `SCN-${id}-${1000 + i}`,\n}));\nreturn JSON.stringify({ order_id: id, ...order, tracking_events: events,\n  shipping_address: { line1: '14 Park Row', city: 'Leeds', postcode: 'LS1 5HD', country: 'GB' },\n  payment: { method: 'card', last4: '4242', captured: true, amount_gbp: 129.0 } });\n",
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"order_id\": {\n      \"type\": \"string\",\n      \"description\": \"The order number, e.g. 1042\"\n    }\n  },\n  \"required\": [\n    \"order_id\"\n  ]\n}"
+      }
+    },
+    {
+      "id": "98104b93-a60a-5255-88fb-0feef17f3d65",
+      "name": "Search Help Center",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        580,
+        260
+      ],
+      "parameters": {
+        "name": "search_help_center",
+        "description": "Search the help centre for policy articles: returns, delivery, sizing.",
+        "language": "javaScript",
+        "jsCode": "\n// Demo knowledge base. In production this would be a vector store or help-centre search.\nconst q = String(query.query || '').toLowerCase();\nconst articles = {\n  returns: 'Returns policy. You can return unworn items within 30 days of delivery for a full refund. Start a return from your account page or reply with your order number. We email a prepaid label within one working day. Refunds reach your card 3-5 working days after the parcel arrives at our warehouse. Sale items can be returned for store credit only. Footwear must be returned in its original box. ',\n  delivery: 'Delivery. Standard UK delivery is free over £50 and takes 2-4 working days. Next-day delivery costs £6.95 if ordered before 2pm. We ship to the EU in 4-7 working days for £12.95. Tracking links are emailed at dispatch. Parcels are left in a safe place if nobody is home unless you opt out at checkout. ',\n  sizing: 'Sizing. Our footwear runs true to size; if you are between sizes choose the larger. Jackets are cut for layering, so most customers take their usual size. Socks: S fits UK 3-5, M fits UK 6-8, L fits UK 9-11. ',\n};\nconst key = Object.keys(articles).find((k) => q.includes(k.slice(0, 5))) || 'delivery';\n// Help-centre pages are long; the whole page comes back, as it does from most search tools.\nreturn `${articles[key].repeat(12)}\\n\\n(Source: help centre article \"${key}\")`;\n",
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"query\": {\n      \"type\": \"string\",\n      \"description\": \"What to search for\"\n    }\n  },\n  \"required\": [\n    \"query\"\n  ]\n}"
+      }
+    },
+    {
+      "id": "734daaaa-2359-55e2-9a74-566b9cef1cfb",
+      "name": "Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        740,
+        260
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "f2cc01da-3ef6-5be6-a194-e762935e2b73",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        100,
+        260
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "69cb4195-01d6-5f83-a2c4-bddd1ab44cbd",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        260,
+        260
+      ],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "0138b0f4-4d9c-5239-adbb-ff4b768be556",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -40
+      ],
+      "parameters": {
+        "content": "## Support bot, classic setup (for comparison)\nOpenAI Chat Model + **Simple Memory** (last 10 messages).\n\n- Simple Memory lives in the n8n process: a restart wipes every conversation, and in queue mode each worker has its own copy.\n- Only the last 10 messages are kept, so early facts (a name, an order number) are forgotten.\n\nSee `../twigg/support-bot.json` for the same bot on Twigg.",
+        "width": 380,
+        "height": 360,
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Support Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Order": {
+      "ai_tool": [
+        [
+          {
+            "node": "Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Help Center": {
+      "ai_tool": [
+        [
+          {
+            "node": "Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Support Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Support Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
