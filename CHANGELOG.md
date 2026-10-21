@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Twigg AI Agent: replies now reach a Chat Trigger in Streaming mode (they were empty), and the agent works as a tool of another agent (it failed with "Node does not have input of type").
 - A turn that fails at the model provider for a passing reason (overloaded, unavailable) is retried up to twice with `retry_of`, so the message is not stored twice and the user still gets a reply.
 - Pending Tool Call Window defaults to 15 s (was 60 s): in n8n a stopped execution never delivers its tool result, so a long wait only delayed the next reply.
 - Import All gives each chat the plain session ID as its Chat ID, removing the `__<memory node name>` suffix n8n's Memory nodes add (Remove Memory Node Suffix, on by default), and reports `messages_read` per chat.
