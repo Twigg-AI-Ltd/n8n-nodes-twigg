@@ -1,4 +1,4 @@
-# n8n-nodes-twigg
+# @twigg/n8n-nodes-twigg
 
 AI agents for n8n whose model and memory are [Twigg](https://twigg.ai). Twigg keeps each
 conversation on its servers, fits it to the model's context window, trims old tool output and
@@ -18,7 +18,7 @@ Two ways to use it:
 ## Installation
 
 Follow the [community nodes installation guide](https://docs.n8n.io/integrations/community-nodes/installation/)
-and install `n8n-nodes-twigg`.
+and install `@twigg/n8n-nodes-twigg`.
 
 ## Credentials
 

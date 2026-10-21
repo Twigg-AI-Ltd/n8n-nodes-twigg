@@ -13,7 +13,7 @@ from pathlib import Path
 
 OUT = Path(sys.argv[1])
 DEV = "--dev" in sys.argv
-TWIGG_PREFIX = "CUSTOM" if DEV else "n8n-nodes-twigg"
+TWIGG_PREFIX = "CUSTOM" if DEV else "@twigg/n8n-nodes-twigg"
 
 
 def nid(name):

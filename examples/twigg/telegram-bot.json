@@ -105,7 +105,7 @@
     {
       "id": "a3d1855b-7b91-5225-933c-7f2321804b26",
       "name": "Forget conversation",
-      "type": "n8n-nodes-twigg.twigg",
+      "type": "@twigg/n8n-nodes-twigg.twigg",
       "typeVersion": 1,
       "position": [
         480,
@@ -120,7 +120,7 @@
     {
       "id": "2af08557-f13c-5be6-9f46-0d690df7a8bd",
       "name": "Twigg Chat Model",
-      "type": "n8n-nodes-twigg.lmChatTwigg",
+      "type": "@twigg/n8n-nodes-twigg.lmChatTwigg",
       "typeVersion": 1,
       "position": [
         480,

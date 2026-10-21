@@ -54,7 +54,7 @@
     {
       "id": "3712af9f-279f-5d7b-af43-7c099b777115",
       "name": "Assistant",
-      "type": "n8n-nodes-twigg.twiggAgent",
+      "type": "@twigg/n8n-nodes-twigg.twiggAgent",
       "typeVersion": 1,
       "position": [
         480,
@@ -106,7 +106,7 @@
     {
       "id": "a3d1855b-7b91-5225-933c-7f2321804b26",
       "name": "Forget conversation",
-      "type": "n8n-nodes-twigg.twigg",
+      "type": "@twigg/n8n-nodes-twigg.twigg",
       "typeVersion": 1,
       "position": [
         480,

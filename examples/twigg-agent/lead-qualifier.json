@@ -21,7 +21,7 @@
     {
       "id": "9f07cf2c-f7c9-5189-b5e7-d4e2a3e17ce2",
       "name": "Lead Agent",
-      "type": "n8n-nodes-twigg.twiggAgent",
+      "type": "@twigg/n8n-nodes-twigg.twiggAgent",
       "typeVersion": 1,
       "position": [
         300,
