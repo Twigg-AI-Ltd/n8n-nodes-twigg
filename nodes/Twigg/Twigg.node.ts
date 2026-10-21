@@ -122,7 +122,7 @@ export class Twigg implements INodeType {
 			},
 			{
 				displayName:
-					'Imports one conversation per input item. Feed it one item per session, for example from a Postgres node running SELECT DISTINCT session_id FROM n8n_chat_histories, and set the external Memory node\'s session key to the same field. Chats already on Twigg are skipped and not charged again, so if some fail (for example when the balance runs out), fix the cause and run it again. The external memory is only read.',
+					'Imports one conversation per input item. Feed it one item per session, for example from a Postgres node running SELECT DISTINCT session_id FROM n8n_chat_histories, and set the external Memory node to Define Below with its key set to the same field. Chats already on Twigg are skipped and not charged again, so if some fail (for example when the balance runs out), fix the cause and run it again. The external memory is only read.',
 				name: 'importNotice',
 				type: 'notice',
 				default: '',
@@ -146,6 +146,15 @@ export class Twigg implements INodeType {
 				displayOptions: { show: { resource: ['chat'], operation: ['importAll'] } },
 				description:
 					'The Chat ID the conversation will have on Twigg: the value your Twigg AI Agent or Twigg Chat Model uses as Chat ID, usually the old session ID',
+			},
+			{
+				displayName: 'Remove Memory Node Suffix',
+				name: 'stripMemorySuffix',
+				type: 'boolean',
+				default: true,
+				displayOptions: { show: { resource: ['chat'], operation: ['importAll'] } },
+				description:
+					'Whether to remove the "__&lt;memory node name&gt;" that n8n adds to session IDs from a Chat Trigger, so each chat gets the same Chat ID your agent uses (the plain session ID)',
 			},
 			{
 				displayName: 'Hash Chat ID',
@@ -260,13 +269,33 @@ export class Twigg implements INodeType {
 	}
 }
 
-function chatIdFor(ctx: IExecuteFunctions, itemIndex: number): { id: string; raw: string; hashed: boolean } {
-	const raw = ctx.getNodeParameter('chatId', itemIndex) as unknown;
-	if (raw === '' || raw === undefined || raw === null) {
+function chatIdFor(
+	ctx: IExecuteFunctions,
+	itemIndex: number,
+	adjust: (raw: string) => string = (raw) => raw,
+): { id: string; raw: string; hashed: boolean } {
+	const value = ctx.getNodeParameter('chatId', itemIndex) as unknown;
+	if (value === '' || value === undefined || value === null) {
 		throw new NodeOperationError(ctx.getNode(), 'Chat ID is empty', { itemIndex });
 	}
+	const raw = adjust(String(value));
 	const hash = ctx.getNodeParameter('hashChatId', itemIndex, false) as boolean;
-	return { ...resolveExternalId(String(raw), hash), raw: String(raw) };
+	return { ...resolveExternalId(raw, hash), raw };
+}
+
+/**
+ * n8n's Memory nodes (v1.4+) store a Chat Trigger session as `<sessionId>__<node name>`, with the
+ * name's other characters turned into `_`. The agent's Chat ID is the plain session ID, so the
+ * suffix comes off: the connected Memory node's own name first, then any trailing node-name-like part.
+ */
+export function withoutMemorySuffix(sessionId: string, memoryNodeNames: string[]): string {
+	for (const name of memoryNodeNames) {
+		const suffix = `__${name.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+		if (sessionId.endsWith(suffix) && sessionId.length > suffix.length) return sessionId.slice(0, -suffix.length);
+	}
+	const at = sessionId.lastIndexOf('__');
+	if (at > 0 && /^[A-Za-z][A-Za-z0-9_-]*$/.test(sessionId.slice(at + 2))) return sessionId.slice(0, at);
+	return sessionId;
 }
 
 function historyPartJson(part: HistoryPart): IDataObject {
@@ -346,14 +375,21 @@ async function importAll(ctx: IExecuteFunctions, client: TwiggClient, itemCount:
 	let cost = 0;
 	let truncated = 0;
 
+	const memoryNodeNames = ctx
+		.getParentNodes(ctx.getNode().name, { connectionType: NodeConnectionTypes.AiMemory, depth: 1 })
+		.map((node) => node.name);
+
 	for (let itemIndex = 0; itemIndex < itemCount; itemIndex++) {
 		let chatId = '';
 		let json: IDataObject;
 		try {
-			const resolved = chatIdFor(ctx, itemIndex);
+			const strip = ctx.getNodeParameter('stripMemorySuffix', itemIndex, true) === true;
+			const sessionId = String(ctx.getNodeParameter('chatId', itemIndex, '') ?? '');
+			const resolved = chatIdFor(ctx, itemIndex, strip ? (raw) => withoutMemorySuffix(raw, memoryNodeNames) : undefined);
 			chatId = resolved.id;
+			const source = sessionId !== resolved.raw ? { memory_session_id: sessionId } : {};
 			if (stopped) {
-				json = { chat_id: chatId, status: 'not_attempted', error: stopped };
+				json = { chat_id: chatId, ...source, status: 'not_attempted', error: stopped };
 			} else {
 				const memory = await ctx.getInputConnectionData(NodeConnectionTypes.AiMemory, itemIndex);
 				if (!memory) {
@@ -370,9 +406,9 @@ async function importAll(ctx: IExecuteFunctions, client: TwiggClient, itemCount:
 					{ ...(namespace ? { namespace } : {}), ...(title ? { title } : {}) },
 					memory,
 				);
-				json = { chat_id: chatId, status: outcome.status, messages_sent: outcome.sent };
+				json = { chat_id: chatId, ...source, status: outcome.status, messages_read: outcome.sent };
 				if (outcome.status !== 'empty') {
-					Object.assign(json, outcome.response as unknown as IDataObject, { chat_id: chatId, status: outcome.status });
+					Object.assign(json, outcome.response as unknown as IDataObject, { chat_id: chatId, ...source, status: outcome.status });
 					cost += Number(outcome.response.cost ?? 0) || 0;
 				}
 				if (outcome.leftOut > 0) {

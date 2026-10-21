@@ -17,6 +17,8 @@ function harness({
 	continueOnFail = false,
 	useExternalMemory = false,
 	memory = undefined as unknown,
+	streaming = undefined as ((type: string, itemIndex: number, content?: unknown) => void) | undefined,
+	nodeInputs = undefined as Array<{ type: string }> | undefined,
 	otherRoutes = (() => undefined) as (req: { method: string; url: string; body?: unknown }) => { statusCode: number; body: unknown } | undefined,
 }: {
 	responses: ResponseBody[];
@@ -27,6 +29,8 @@ function harness({
 	useExternalMemory?: boolean;
 	memory?: unknown;
 	otherRoutes?: (req: { method: string; url: string; body?: unknown }) => { statusCode: number; body: unknown } | undefined;
+	streaming?: (type: string, itemIndex: number, content?: unknown) => void;
+	nodeInputs?: Array<{ type: string }>;
 }) {
 	/** Calls to /responses; everything else (chat lookups, imports) goes to `otherCalls`. */
 	const requests: Array<{ url: string; body: CreateResponseRequest }> = [];
@@ -52,6 +56,9 @@ function harness({
 		getParentNodes: () => tools.map((t) => ({ name: t.node, disabled: false })),
 		getChatTrigger: () => null,
 		continueOnFail: () => continueOnFail,
+		isStreaming: () => streaming !== undefined,
+		getNodeInputs: () => nodeInputs ?? [{ type: 'main' }, { type: 'ai_tool' }, { type: 'ai_memory' }],
+		sendChunk: (type: string, itemIndex: number, content?: unknown) => streaming?.(type, itemIndex, content),
 		logger: { debug: () => {}, info: () => {}, warn: (message: string) => warnings.push(message) },
 		helpers: {
 			httpRequestWithAuthentication: async (
@@ -113,7 +120,36 @@ describe('TwiggAgent', () => {
 			system: 'Be brief.',
 			input: [{ type: 'prompt', text: 'Where is my order 1042?' }],
 			stream: false,
+			wait_for_pending_tool_calls: 15,
 		});
+	});
+
+	it('streams the finished reply when the Chat Trigger is in Streaming mode', async () => {
+		const chunks: Array<[string, number, unknown]> = [];
+		const { run } = harness({
+			responses: [toolCall('toolu_1', 'lookup_order', { order_id: '1042' }), endTurnResponse],
+			tools: [{ node: 'Lookup Order', tool: lookupOrder }],
+			streaming: (type, itemIndex, content) => chunks.push([type, itemIndex, content]),
+		});
+		const request = (await run()) as EngineRequest;
+		expect(chunks).toEqual([]);
+		await run(respond(request, [toolOutput({ response: 'shipped' })]));
+		expect(chunks).toEqual([
+			['begin', 0, undefined],
+			['item', 0, 'Order 1042 shipped and arrives on 8 September.'],
+			['end', 0, undefined],
+		]);
+	});
+
+	it('works as a tool of another agent, where it has no inputs to read tools from', async () => {
+		const { run, requests } = harness({
+			responses: [endTurnResponse],
+			tools: [{ node: 'Lookup Order', tool: lookupOrder }],
+			nodeInputs: [],
+		});
+		const out = (await run()) as INodeExecutionData[][];
+		expect(requests[0].body).not.toHaveProperty('tools');
+		expect(out[0][0].json.output).toMatch(/1042/);
 	});
 
 	it('treats an empty engine response as the first call', async () => {

@@ -23,7 +23,7 @@ function scriptedClient(script: Scripted[], policyOverrides = {}) {
 				sleeps.push(ms);
 			},
 		},
-		{ waitBudgetSeconds: 120, timeoutRetries: 2, maxBackoffSeconds: 30, ...policyOverrides },
+		{ waitBudgetSeconds: 120, timeoutRetries: 2, maxBackoffSeconds: 30, providerRetries: 2, ...policyOverrides },
 	);
 	return { client, calls, sleeps };
 }
@@ -126,6 +126,38 @@ describe('createResponseByExternalId', () => {
 		const error = await client.createResponseByExternalId('x', unkeyed).catch((e: unknown) => e);
 		expect((error as TwiggApiError).code).toBe('response_timeout');
 		expect(calls).toHaveLength(1);
+	});
+
+	it('retries a run the model provider failed, with retry_of instead of resending the input', async () => {
+		const overloaded = ok(
+			errorEnvelope('external_service_error', 'the model provider is temporarily overloaded', {
+				kind: 'overloaded',
+				run_id: 'run-1',
+			}),
+			502,
+		);
+		const { client, calls, sleeps } = scriptedClient([overloaded, ok(endTurnResponse)]);
+		await expect(client.createResponseByExternalId('web-1', request)).resolves.toEqual(endTurnResponse);
+		expect(calls).toHaveLength(2);
+		expect(calls[1].body).toMatchObject({
+			model: 'claude-haiku-5-5',
+			input: [],
+			retry_of: 'run-1',
+			idempotency_key: `${request.idempotency_key}.r1`,
+		});
+		expect(sleeps).toEqual([2000]);
+	});
+
+	it('gives up after the provider retries, and never retries other provider failures', async () => {
+		const fail = (kind: string) =>
+			ok(errorEnvelope('external_service_error', 'provider failed', { kind, run_id: 'run-1' }), 502);
+		const retried = scriptedClient([fail('overloaded'), fail('overloaded'), fail('overloaded')]);
+		await expect(retried.client.createResponseByExternalId('web-1', request)).rejects.toMatchObject({ status: 502 });
+		expect(retried.calls).toHaveLength(3);
+
+		const permanent = scriptedClient([fail('invalid_request')]);
+		await expect(permanent.client.createResponseByExternalId('web-1', request)).rejects.toMatchObject({ status: 502 });
+		expect(permanent.calls).toHaveLength(1);
 	});
 
 	it('throws every other error at once with code, hint and details', async () => {

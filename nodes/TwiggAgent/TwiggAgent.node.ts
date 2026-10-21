@@ -9,11 +9,11 @@ import type {
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import type { AgentTool } from '../shared/agent-tools';
-import { collectTools } from '../shared/agent-tools';
+import { collectTools, hasInput } from '../shared/agent-tools';
 import type { AgentItemState, ToolActionMetadata } from '../shared/agent-turns';
 import { readMetadata, replyText, toolCallActions, toolResultsFor } from '../shared/agent-turns';
 import { resolveChatId } from '../shared/chat-id';
-import { DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
+import { DEFAULT_PENDING_TOOL_CALL_WINDOW, DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
 import { TwiggRefusalError } from '../shared/errors';
 import { chatIsEmpty, importFromMemory, isImportUnavailable } from '../shared/history-import';
 import { buildIdempotencyKey, chatTitleFor, resolveExternalId } from '../shared/ids';
@@ -197,7 +197,7 @@ export class TwiggAgent implements INodeType {
 						displayName: 'Pending Tool Call Window (Seconds)',
 						name: 'pendingToolCallWindow',
 						type: 'number',
-						default: 60,
+						default: 15,
 						typeOptions: { minValue: 0, maxValue: 600 },
 						description:
 							'When a new message arrives while a tool from the previous message is still running, wait up to this long for the tool result instead of abandoning the tool call. 0 turns the wait off.',
@@ -275,12 +275,17 @@ export class TwiggAgent implements INodeType {
 				}
 
 				const item = await prepareItem(this, itemIndex, credentials.baseUrl!);
-				if (!resumed && this.getNodeParameter('useExternalMemory', itemIndex, false) === true) {
+				if (
+					!resumed &&
+					this.getNodeParameter('useExternalMemory', itemIndex, false) === true &&
+					hasInput(this, NodeConnectionTypes.AiMemory)
+				) {
 					await importOldHistory(this, item, itemIndex);
 				}
 				const result = await runTurns(this, item, itemIndex, current, input);
 				state[itemIndex] = result.state;
 				actions.push(...result.actions);
+				if (result.state.output !== undefined) streamReply(this, itemIndex, result.state.output);
 			} catch (error) {
 				if (!this.continueOnFail()) throw toNodeError(this.getNode(), error, itemIndex);
 				state[itemIndex] = { turns: current.turns, error: (error as Error).message };
@@ -299,6 +304,17 @@ export class TwiggAgent implements INodeType {
 			}),
 		];
 	}
+}
+
+/**
+ * A Chat Trigger in Streaming mode shows only what is streamed, so the finished reply goes out as one
+ * chunk (Twigg answers in one piece). Without this the chat stays empty.
+ */
+function streamReply(ctx: IExecuteFunctions, itemIndex: number, text: string): void {
+	if (typeof ctx.isStreaming !== 'function' || !ctx.isStreaming()) return;
+	ctx.sendChunk('begin', itemIndex);
+	ctx.sendChunk('item', itemIndex, text);
+	ctx.sendChunk('end', itemIndex);
 }
 
 /** What one item's turns need: its settings, its chat on Twigg, a client and the connected tools. */
@@ -384,7 +400,7 @@ async function runTurns(
 ): Promise<{ state: AgentItemState; actions: EngineRequest<ToolActionMetadata>['actions'] }> {
 	const { options, tools } = item;
 	const maxIterations = options.maxIterations ?? 10;
-	const pendingWindow = options.pendingToolCallWindow ?? 60;
+	const pendingWindow = options.pendingToolCallWindow ?? DEFAULT_PENDING_TOOL_CALL_WINDOW;
 
 	let turns = previous.turns;
 	let input = firstInput;

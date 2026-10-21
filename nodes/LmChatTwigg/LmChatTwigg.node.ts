@@ -4,7 +4,7 @@ import { NodeConnectionTypes } from 'n8n-workflow';
 
 import { TwiggChatModel } from './TwiggChatModel';
 import { resolveChatId } from '../shared/chat-id';
-import { DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
+import { DEFAULT_PENDING_TOOL_CALL_WINDOW, DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
 import { chatTitleFor, resolveExternalId } from '../shared/ids';
 import { DEFAULT_MODEL, DEFAULT_NAMESPACE, loadModelOptions } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
@@ -150,7 +150,7 @@ export class LmChatTwigg implements INodeType {
 						displayName: 'Pending Tool Call Window (Seconds)',
 						name: 'pendingToolCallWindow',
 						type: 'number',
-						default: 60,
+						default: 15,
 						typeOptions: { minValue: 0, maxValue: 600 },
 						description:
 							'When a new message arrives while a tool from the previous message is still running, wait up to this long for the tool result instead of abandoning the tool call. 0 turns the wait off.',
@@ -217,7 +217,7 @@ export class LmChatTwigg implements INodeType {
 			if (title !== undefined) chat.title = title;
 		}
 
-		const pendingWindow = options.pendingToolCallWindow ?? 60;
+		const pendingWindow = options.pendingToolCallWindow ?? DEFAULT_PENDING_TOOL_CALL_WINDOW;
 		const chatModel = new TwiggChatModel(
 			client,
 			{

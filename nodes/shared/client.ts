@@ -40,13 +40,33 @@ export type RetryPolicy = {
 	timeoutRetries: number;
 	/** Longest single wait when the API sends no Retry-After. */
 	maxBackoffSeconds: number;
+	/** How many times a turn that failed at the model provider (overloaded, unavailable) is retried. */
+	providerRetries: number;
 };
 
 export const DEFAULT_RETRY_POLICY: RetryPolicy = {
 	waitBudgetSeconds: 120,
 	timeoutRetries: 2,
 	maxBackoffSeconds: 30,
+	providerRetries: 2,
 };
+
+/**
+ * How long a new message waits for an unanswered tool call from the previous one. In n8n a stopped
+ * execution never delivers its result, so a long window only delays the reply.
+ */
+export const DEFAULT_PENDING_TOOL_CALL_WINDOW = 15;
+
+/** Provider failures (`502 external_service_error`) worth retrying, by `details.kind`. */
+const TRANSIENT_PROVIDER_FAILURES = new Set(['overloaded', 'unavailable', 'rate_limited', 'timeout', 'server_error']);
+
+/** The failed run to retry, when a turn failed at the provider for a reason that usually passes. */
+function retryableRun(error: unknown): string | undefined {
+	if (!(error instanceof TwiggApiError) || error.status !== 502 || error.code !== 'external_service_error') return undefined;
+	const details = error.details as { kind?: unknown; run_id?: unknown } | undefined;
+	if (typeof details?.run_id !== 'string' || !TRANSIENT_PROVIDER_FAILURES.has(String(details.kind))) return undefined;
+	return details.run_id;
+}
 
 export type ClientDeps = {
 	request: HttpRequestFn;
@@ -195,12 +215,32 @@ export class TwiggClient {
 		externalId: string,
 		request: CreateResponseRequest,
 	): Promise<ResponseBody> {
-		const { body } = await this.callWithWaits<ResponseBody>(
-			{ method: 'POST', path: `/api/v1/chats/external/${encodeExternalId(externalId)}/responses`, body: request },
-			[200],
-			Boolean(request.idempotency_key),
-		);
-		return body;
+		const path = `/api/v1/chats/external/${encodeExternalId(externalId)}/responses`;
+		let attempt = request;
+		for (let retries = 0; ; retries++) {
+			const outcome = await this.callWithWaits<ResponseBody>(
+				{ method: 'POST', path, body: attempt },
+				[200],
+				Boolean(attempt.idempotency_key),
+			).then(
+				({ body }) => ({ body, failure: undefined }),
+				(failure: unknown) => ({ body: undefined, failure }),
+			);
+			if (outcome.body) return outcome.body;
+
+			// The provider failed after Twigg stored the input. Retry that run rather than resending
+			// the input (which would add it to the history twice), as the API documents for retry_of.
+			const runId = retryableRun(outcome.failure);
+			if (!runId || retries >= this.policy.providerRetries) throw outcome.failure;
+			this.log('Twigg: model provider failed, retrying the run', { runId, attempt: retries + 1 });
+			await this.sleep(Math.min(2 ** (retries + 1), this.policy.maxBackoffSeconds) * 1000);
+			attempt = {
+				...request,
+				input: [],
+				retry_of: runId,
+				...(request.idempotency_key ? { idempotency_key: `${request.idempotency_key}.r${retries + 1}` } : {}),
+			};
+		}
 	}
 
 	/**

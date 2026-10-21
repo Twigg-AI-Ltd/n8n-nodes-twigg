@@ -67,7 +67,17 @@ export function pairToolsWithNodes(connected: unknown[], parentNodeNames: string
 	return tools;
 }
 
+/**
+ * Whether the node has an input of this type. The "Tool" version n8n makes of a node has no inputs,
+ * and asking it for connected tools then throws ("Node does not have input of type").
+ */
+export function hasInput(ctx: IExecuteFunctions, type: string): boolean {
+	if (typeof ctx.getNodeInputs !== 'function') return true;
+	return ctx.getNodeInputs().some((input) => input.type === type);
+}
+
 export async function collectTools(ctx: IExecuteFunctions, itemIndex: number): Promise<AgentTool[]> {
+	if (!hasInput(ctx, NodeConnectionTypes.AiTool)) return [];
 	const raw = await ctx.getInputConnectionData(NodeConnectionTypes.AiTool, itemIndex);
 	const connected = Array.isArray(raw) ? raw : raw ? [raw] : [];
 	const parentNodeNames = ctx

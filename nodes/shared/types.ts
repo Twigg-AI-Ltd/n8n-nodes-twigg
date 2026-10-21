@@ -52,6 +52,8 @@ export type CreateResponseRequest = {
 	reasoning_effort?: ReasoningEffort;
 	wait_for_pending_tool_calls?: number;
 	idempotency_key?: string;
+	/** Retries the chat's latest failed run without appending input (send `input: []`). */
+	retry_of?: string;
 	chat?: OpenChatRequest;
 	user_metadata?: Record<string, unknown>;
 };
