@@ -72,9 +72,6 @@ If an import fails, the message is still answered (without the old history) and 
 A conversation longer than 500 messages keeps its newest 500. Twigg charges for imports by size
 ($0.25 per million tokens stored); no model is called.
 
-> The import endpoint is rolling out on the Twigg API. Until it is live, the agent answers without
-> importing and logs that the import is not available yet.
-
 ### Twigg Chat Model (sub-node)
 
 Connect it to the **Chat Model** input of an AI Agent (or an LLM chain). Do **not** connect a
