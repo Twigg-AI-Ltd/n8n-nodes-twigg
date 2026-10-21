@@ -88,7 +88,7 @@
     {
       "id": "2af08557-f13c-5be6-9f46-0d690df7a8bd",
       "name": "Twigg Chat Model",
-      "type": "n8n-nodes-twigg.lmChatTwigg",
+      "type": "@twigg/n8n-nodes-twigg.lmChatTwigg",
       "typeVersion": 1,
       "position": [
         120,

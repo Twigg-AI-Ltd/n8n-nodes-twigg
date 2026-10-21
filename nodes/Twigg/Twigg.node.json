@@ -1,5 +1,5 @@
 {
-	"node": "n8n-nodes-twigg.twigg",
+	"node": "@twigg/n8n-nodes-twigg.twigg",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Development"],

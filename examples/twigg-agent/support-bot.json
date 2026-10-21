@@ -24,7 +24,7 @@
     {
       "id": "1c8380df-9b0c-5c35-ba13-931497c5f466",
       "name": "Support Agent",
-      "type": "n8n-nodes-twigg.twiggAgent",
+      "type": "@twigg/n8n-nodes-twigg.twiggAgent",
       "typeVersion": 1,
       "position": [
         300,
