@@ -58,7 +58,9 @@ AI Agent and Chat Model nodes.
 #### Keeping your existing conversations
 
 Turn on **Use External Memory** and connect the Memory node your old agent used (Postgres, Redis,
-MongoDB and so on) to the **External Memory** input. Each conversation then moves to Twigg by itself the
+MongoDB and so on) to the **External Memory** input. Move that same node across rather than adding a new
+one: when a Memory node takes its session ID from a Chat Trigger, n8n stores each conversation under
+`<session ID>__<node name>`, so a node with a different name finds nothing. Each conversation then moves to Twigg by itself the
 first time it gets a message: if Twigg has no history for that Chat ID yet, the agent reads the session's
 history from the external memory, imports it, and answers. The external memory is only read, never
 changed, so you can switch back at any time.
@@ -88,7 +90,7 @@ replays (only the new message is sent) and logs a warning.
 | **Options → Maximum Number of Tokens** | Output ceiling per reply. |
 | **Options → Reasoning Effort** | Thinking budget on models that support it. |
 | **Options → On Refusal** | What happens when the model declines to answer. **Fail the Run** (default) stops with an error that includes the refusal, so a provider notice never reaches your users as a reply; **Return Refusal Text** passes it to the Agent instead. |
-| **Options → Pending Tool Call Window** | When a new message arrives while a tool from the previous message is still running, wait up to this long (default 60 s) for the tool result instead of abandoning the call. |
+| **Options → Pending Tool Call Window** | When a new message arrives while a tool from the previous message is still running, wait up to this long (default 15 s) for the tool result instead of abandoning the call. In n8n a stopped execution never delivers its result, so a long window only delays the next reply. |
 | **Options → Max Wait for a Busy Chat** | How long to keep waiting (default 120 s) when another reply is still being generated on the same chat, or Twigg asks to slow down. |
 | **Options → Timeout** | HTTP timeout. Twigg answers within about 280 s, so keep it above that. |
 
@@ -127,7 +129,10 @@ Chat ID.
 
 **Import All** gets an **External Memory** input. Feed it one item per session, for example from a
 Postgres node running `SELECT DISTINCT session_id FROM n8n_chat_histories`, set the external Memory
-node's session key to `{{ $json.session_id }}`, and run it. Each output item reports its chat's status:
+node's Session ID to **Define below** with the key `{{ $json.session_id }}`, and run it. Those stored
+session IDs end in `__<memory node name>` when they came from a Chat Trigger; **Remove Memory Node
+Suffix** (on by default) strips it, so each chat gets the plain session ID your agent uses as its Chat
+ID, and the output keeps the original as `memory_session_id`. Each output item reports its chat's status:
 `imported`, `skipped` (already on Twigg), `empty`, `failed` (with the error) or `not_attempted`. If the
 Twigg balance runs out, the run stops there and marks the rest `not_attempted`. Running it again is safe:
 chats already on Twigg are skipped and not charged again, so only the rest are imported. When every

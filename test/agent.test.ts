@@ -113,6 +113,7 @@ describe('TwiggAgent', () => {
 			system: 'Be brief.',
 			input: [{ type: 'prompt', text: 'Where is my order 1042?' }],
 			stream: false,
+			wait_for_pending_tool_calls: 15,
 		});
 	});
 

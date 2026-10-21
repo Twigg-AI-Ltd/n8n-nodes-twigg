@@ -1,7 +1,7 @@
 import type { IExecuteFunctions, INodeExecutionData, NodeExecutionHint } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
-import { Twigg } from '../nodes/Twigg/Twigg.node';
+import { Twigg, withoutMemorySuffix } from '../nodes/Twigg/Twigg.node';
 
 type Api = (req: { method: string; url: string; body?: unknown }) => { statusCode: number; body: unknown };
 
@@ -22,6 +22,7 @@ function importAllHarness(sessions: string[], api: Api) {
 			})[name] ?? fallback,
 		getCredentials: async () => ({ apiKey: 'tw_test', baseUrl: 'https://api.twigg.ai' }),
 		getNode: () => ({ id: 'node-1', name: 'Twigg' }),
+		getParentNodes: () => [{ name: 'Postgres Chat Memory', disabled: false }],
 		getInputConnectionData: async () => ({
 			chatHistory: { getMessages: async () => [{ getType: () => 'human', content: 'Hello again' }] },
 		}),
@@ -90,5 +91,21 @@ describe('Twigg node: Import All', () => {
 	it('says plainly when the API has no import endpoint yet', async () => {
 		const { run } = importAllHarness(['a'], () => ({ statusCode: 404, body: { error: { code: 'not_found', message: 'not found' } } }));
 		await expect(run()).rejects.toThrow(/history import isn't available yet/);
+	});
+});
+
+describe('withoutMemorySuffix', () => {
+	it("takes off the suffix n8n's Memory nodes add to Chat Trigger sessions", () => {
+		expect(withoutMemorySuffix('a1b2c3__Postgres_Chat_Memory', ['Postgres Chat Memory'])).toBe('a1b2c3');
+		expect(withoutMemorySuffix('a1b2c3__My_old_memory', ['Postgres Chat Memory'])).toBe('a1b2c3');
+		expect(withoutMemorySuffix('447700900123', ['Postgres Chat Memory'])).toBe('447700900123');
+		expect(withoutMemorySuffix('__Postgres_Chat_Memory', ['Postgres Chat Memory'])).toBe('__Postgres_Chat_Memory');
+	});
+
+	it('gives Import All the plain session ID as the Chat ID', async () => {
+		const { run, calls } = importAllHarness(['web-1__Postgres_Chat_Memory'], () => imported('c1'));
+		const out = await run();
+		expect(calls[0].url).toMatch(/\/chats\/external\/web-1\/import$/);
+		expect(out[0].json).toMatchObject({ chat_id: 'web-1', memory_session_id: 'web-1__Postgres_Chat_Memory', status: 'imported' });
 	});
 });
