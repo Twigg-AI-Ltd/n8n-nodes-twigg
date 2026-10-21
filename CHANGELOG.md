@@ -1,22 +1,43 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (2026-10-21)
 
-- Twigg AI Agent: replies now reach a Chat Trigger in Streaming mode (they were empty), and the agent works as a tool of another agent (it failed with "Node does not have input of type").
-- A turn that fails at the model provider for a passing reason (overloaded, unavailable) is retried up to twice with `retry_of`, so the message is not stored twice and the user still gets a reply.
-- Pending Tool Call Window defaults to 15 s (was 60 s): in n8n a stopped execution never delivers its tool result, so a long wait only delayed the next reply.
-- Import All gives each chat the plain session ID as its Chat ID, removing the `__<memory node name>` suffix n8n's Memory nodes add (Remove Memory Node Suffix, on by default), and reports `messages_read` per chat.
-- Existing conversations from n8n Memory nodes: **Use External Memory** on the Twigg AI Agent moves each conversation to Twigg on its first message; **Twigg → Chat → Import All** moves them all at once, reports each chat's status, stops if the balance runs out, and can be re-run safely.
-- **Namespace** is now a visible setting on the Twigg AI Agent and Twigg Chat Model, defaulting to `n8n`.
-- Model prices in the model list read `$0.105` instead of `0.105000000000`.
-- **Twigg AI Agent** node: an AI agent with a Tool input and no Chat Model or Memory input. Twigg runs the model and keeps the conversation; n8n runs the tool nodes. Examples in `examples/twigg-agent/`.
-- Tools attached to the Agent now reach the model with their real input schema. n8n's own tools (Calculator, HTTP Request, ...) were sent as unconverted Zod objects.
-- Example workflows for a support bot, a WhatsApp lead qualifier and a Telegram bot, each with a classic Memory-node version for comparison, and recommended Twigg settings in the README.
-- The published package no longer includes TypeScript declaration files, which n8n's community package scanner rejects.
-- A model refusal fails the run by default instead of becoming the reply. Options → On Refusal → Return Refusal Text keeps the old behaviour.
+First public release. Requires n8n 2.16 or later; tested on 2.16 and 2.44.
 
-## 0.1.0
+### Nodes
 
-- Twigg Chat Model sub-node for AI Agents and LLM chains: conversation kept by Twigg, no Memory node.
-- Twigg action node: Chat Get / Open / Get History / Delete / Abort, Model Get Many.
-- Twigg API credential with connection test.
+- **Twigg AI Agent.** An AI agent whose model and memory are Twigg: connect tools, pick the model,
+  namespace and Chat ID in its settings, and each conversation is kept on Twigg. No Chat Model or
+  Memory node. n8n runs the tool nodes, which show up in the execution as usual. Works with a Chat
+  Trigger in Streaming mode, and as a tool of another agent.
+- **Twigg Chat Model.** A chat model sub-node for n8n's AI Agent and LLM chains, for workflows that
+  keep n8n's agent. Twigg holds the conversation, so no Memory node is needed.
+- **Twigg.** Chat Get, Open, Get History, Delete (reset a conversation), Abort and Import All; Model
+  Get Many.
+- **Twigg API credential** with a connection test.
+
+### Conversations
+
+- Memory survives restarts, scaling and queue mode, with no database to set up.
+- Switch the model at any time, across providers, with the history and past tool calls intact.
+- A tool call that never got its result (for example a stopped execution) is closed on the next
+  message instead of blocking the conversation.
+- Two messages at once on one chat are answered in turn.
+- Turns that fail at the model provider for a passing reason are retried without storing the message
+  twice.
+- Safe retries: each turn carries an idempotency key, so a retry returns the stored reply.
+- A model refusal fails the run by default rather than reaching the user (Options → On Refusal).
+- **Namespace** defaults to `n8n`, so one context budget and retention policy covers everything from
+  n8n. See "Recommended Twigg settings" in the README.
+
+### Moving from a Memory node
+
+- **Use External Memory** on the Twigg AI Agent: connect the Memory node you used before, and each
+  conversation moves to Twigg the first time it gets a message. The old memory is only read.
+- **Twigg → Chat → Import All** moves every conversation at once, reports each chat's status, stops if
+  the Twigg balance runs out, and can be re-run safely.
+
+### Examples
+
+- A support bot, a WhatsApp lead qualifier and a Telegram bot, each built on the Twigg AI Agent, on
+  the Twigg Chat Model, and with a classic Memory node for comparison (`examples/`).
