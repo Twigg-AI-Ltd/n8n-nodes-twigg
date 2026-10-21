@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (2026-10-21)
+
+- The package's author email is now info@twigg.ai. No code changes.
+
 ## 0.1.1 (2026-10-21)
 
 - First release published from GitHub Actions with npm provenance, which n8n requires to verify a
