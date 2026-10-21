@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 (2026-10-21)
+
+- First release published from GitHub Actions with npm provenance, which n8n requires to verify a
+  community node. No other changes from 0.1.0.
+
 ## 0.1.0 (2026-10-21)
 
 First public release. Requires n8n 2.16 or later; tested on 2.16 and 2.44.

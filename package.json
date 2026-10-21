@@ -1,6 +1,6 @@
 {
 	"name": "@twigg/n8n-nodes-twigg",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Twigg for n8n AI agents: an AI Agent node and a Chat Model node with server-side conversation memory, context management and any model, with no Memory node",
 	"license": "MIT",
 	"homepage": "https://twigg.ai",
@@ -19,7 +19,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Twigg-AI-Ltd/n8n-nodes-twigg.git"
+		"url": "git+https://github.com/Twigg-AI-Ltd/n8n-nodes-twigg.git"
 	},
 	"engines": {
 		"node": ">=22"
