@@ -76,7 +76,7 @@ export class TwiggRefusalError extends Error {
 	get description(): string {
 		const lines = [
 			`Twigg run ${this.runId} ended with stop reason "refusal".`,
-			"Set the Twigg Chat Model's On Refusal option to Return Refusal Text to pass it to the Agent instead.",
+			"To pass it on as the reply instead, set the node's On Refusal option to Return Refusal Text.",
 		];
 		if (this.refusalText.trim() !== '') lines.push(`Refusal: ${this.refusalText.trim()}`);
 		return lines.join(' ');

@@ -5,7 +5,7 @@ import { cleanInputSchema } from './translate';
 import type { ToolDefinition } from './types';
 import { isZodSchema, zodToJsonSchema } from './zod-schema';
 
-/** A tool connected to the Twigg AI Agent: what Twigg is told, and which n8n node runs it. */
+/** A tool connected to the Twigg agent: what Twigg is told, and which n8n node runs it. */
 export type AgentTool = {
 	definition: ToolDefinition;
 	/** The node the engine executes for this tool. */

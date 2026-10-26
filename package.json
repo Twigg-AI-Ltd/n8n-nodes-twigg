@@ -1,7 +1,7 @@
 {
 	"name": "@twigg/n8n-nodes-twigg",
-	"version": "0.1.2",
-	"description": "Twigg for n8n AI agents: an AI Agent node and a Chat Model node with server-side conversation memory, context management and any model, with no Memory node",
+	"version": "0.2.0",
+	"description": "Twigg for n8n AI agents: an AI agent and a Chat Model node with server-side conversation memory, context management and any model, with no Memory node",
 	"license": "MIT",
 	"homepage": "https://twigg.ai",
 	"keywords": [
@@ -49,7 +49,6 @@
 		],
 		"nodes": [
 			"dist/nodes/LmChatTwigg/LmChatTwigg.node.js",
-			"dist/nodes/TwiggAgent/TwiggAgent.node.js",
 			"dist/nodes/Twigg/Twigg.node.js"
 		]
 	},

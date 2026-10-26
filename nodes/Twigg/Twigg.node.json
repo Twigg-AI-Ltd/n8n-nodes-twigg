@@ -1,6 +1,6 @@
 {
 	"node": "@twigg/n8n-nodes-twigg.twigg",
-	"nodeVersion": "1.0",
+	"nodeVersion": "2.0",
 	"codexVersion": "1.0",
 	"categories": ["Development"],
 	"resources": {
@@ -15,5 +15,5 @@
 			}
 		]
 	},
-	"alias": ["twigg", "chat", "history", "conversation"]
+	"alias": ["twigg", "agent", "ai agent", "memory", "chat", "tools", "history", "conversation"]
 }

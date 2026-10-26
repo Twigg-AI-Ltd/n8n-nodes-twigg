@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-10-26)
+
+Changes asked for in n8n's community node verification review.
+
+- **The Twigg AI Agent is now the Agent resource of the Twigg node**, so the package has one action
+  node (n8n allows one per package). Its parameters, behaviour and output are unchanged. The Twigg
+  node is now version 2, with Agent as its default resource; version 1 Twigg nodes in existing
+  workflows keep working as before.
+- **Breaking:** workflows that use the separate Twigg AI Agent node (`twiggAgent`) need it replaced
+  with a Twigg node set to Agent → Send Message, with the same settings and connections.
+- Removed the unsupported `subcategories` field from the `.node.json` codex files.
+- Clearer messages: a refusal now points at the On Refusal option of whichever node failed, an empty
+  Chat ID on the Twigg node says how to set it, and some wording no longer says "error".
+
 ## 0.1.2 (2026-10-21)
 
 - The package's author email is now info@twigg.ai. No code changes.

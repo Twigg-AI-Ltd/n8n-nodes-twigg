@@ -137,7 +137,7 @@ export class LmChatTwigg implements INodeType {
 								name: 'Fail the Run',
 								value: 'error',
 								description:
-									"Stop with an error that includes the refusal; handle it with an error workflow or the node's On Error setting",
+									"Stop the run with the refusal in its message; handle it with an error workflow or the node's On Error setting",
 							},
 							{
 								name: 'Return Refusal Text',

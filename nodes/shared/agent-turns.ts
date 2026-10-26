@@ -5,7 +5,7 @@ import type { AgentTool } from './agent-tools';
 import type { ResponseBody, SubmittedToolResult } from './types';
 
 /**
- * How the Twigg AI Agent runs tools: it hands Twigg's tool calls to the n8n engine as an
+ * How the Twigg agent runs tools: it hands Twigg's tool calls to the n8n engine as an
  * EngineRequest, the engine executes the tool nodes (so they appear in the run with their own
  * input and output), then calls the agent again with an EngineResponse holding the results. The
  * request's metadata comes back unchanged, so per-item progress travels in it.

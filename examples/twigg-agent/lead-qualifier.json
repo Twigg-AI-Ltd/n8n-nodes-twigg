@@ -1,5 +1,5 @@
 {
-  "name": "WhatsApp lead qualifier (Twigg AI Agent)",
+  "name": "WhatsApp lead qualifier (Twigg Agent)",
   "nodes": [
     {
       "id": "02af59c4-01de-5a5a-bff8-6a570acecb75",
@@ -21,13 +21,15 @@
     {
       "id": "9f07cf2c-f7c9-5189-b5e7-d4e2a3e17ce2",
       "name": "Lead Agent",
-      "type": "@twigg/n8n-nodes-twigg.twiggAgent",
-      "typeVersion": 1,
+      "type": "@twigg/n8n-nodes-twigg.twigg",
+      "typeVersion": 2,
       "position": [
         300,
         0
       ],
       "parameters": {
+        "resource": "agent",
+        "operation": "sendMessage",
         "model": "claude-haiku-5-5",
         "text": "={{ $json.body.text }}",
         "chatId": "={{ $('Incoming WhatsApp message').item.json.body.from }}",
@@ -101,7 +103,7 @@
         -40
       ],
       "parameters": {
-        "content": "## Lead qualifier on the Twigg AI Agent\nPoint your WhatsApp provider (Twilio, 360dialog, WhatsApp Cloud API) at this webhook, or test with:\n`POST {\"from\": \"+447700900123\", \"text\": \"Hi\"}`\n\n**Chat ID** is the sender's phone number, so each person is one conversation. **Hash Chat ID** is on: Twigg only ever sees a hash of the number.\n\nNo database, no Memory node, no Chat Model node.",
+        "content": "## Lead qualifier on the Twigg Agent\nPoint your WhatsApp provider (Twilio, 360dialog, WhatsApp Cloud API) at this webhook, or test with:\n`POST {\"from\": \"+447700900123\", \"text\": \"Hi\"}`\n\n**Chat ID** is the sender's phone number, so each person is one conversation. **Hash Chat ID** is on: Twigg only ever sees a hash of the number.\n\nNo database, no Memory node, no Chat Model node.",
         "width": 380,
         "height": 380,
         "color": 4

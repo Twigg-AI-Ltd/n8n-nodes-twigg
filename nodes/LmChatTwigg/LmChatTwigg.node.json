@@ -3,10 +3,6 @@
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Development"],
-	"subcategories": {
-		"AI": ["Language Models", "Root Nodes"],
-		"Language Models": ["Chat Models (Recommended)"]
-	},
 	"resources": {
 		"credentialDocumentation": [
 			{

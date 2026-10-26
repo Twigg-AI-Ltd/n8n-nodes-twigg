@@ -1,5 +1,5 @@
 {
-  "name": "Telegram bot (Twigg AI Agent)",
+  "name": "Telegram bot (Twigg Agent)",
   "nodes": [
     {
       "id": "e2114159-f04d-535c-9f54-644b375ee70a",
@@ -54,13 +54,15 @@
     {
       "id": "3712af9f-279f-5d7b-af43-7c099b777115",
       "name": "Assistant",
-      "type": "@twigg/n8n-nodes-twigg.twiggAgent",
-      "typeVersion": 1,
+      "type": "@twigg/n8n-nodes-twigg.twigg",
+      "typeVersion": 2,
       "position": [
         480,
         200
       ],
       "parameters": {
+        "resource": "agent",
+        "operation": "sendMessage",
         "model": "claude-haiku-5-5",
         "text": "={{ $json.message.text }}",
         "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
@@ -128,7 +130,7 @@
         -40
       ],
       "parameters": {
-        "content": "## Telegram bot on the Twigg AI Agent\n1. Add your Telegram bot token to the trigger and the two Telegram nodes.\n2. Add your Twigg API key to **Assistant** and **Forget conversation**.\n\nEach Telegram chat is its own conversation (Chat ID = the Telegram chat id). `/reset` deletes it on Twigg; the next message starts fresh.",
+        "content": "## Telegram bot on the Twigg Agent\n1. Add your Telegram bot token to the trigger and the two Telegram nodes.\n2. Add your Twigg API key to **Assistant** and **Forget conversation**.\n\nEach Telegram chat is its own conversation (Chat ID = the Telegram chat id). `/reset` deletes it on Twigg; the next message starts fresh.",
         "width": 380,
         "height": 320,
         "color": 4
