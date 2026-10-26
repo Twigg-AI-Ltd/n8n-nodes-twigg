@@ -7,12 +7,12 @@ database: the conversation survives restarts, queue mode and scaling.
 
 Two ways to use it:
 
-- **Trigger → Twigg AI Agent**, with your tools connected. One node in place of n8n's AI Agent,
+- **Trigger → Twigg (Agent)**, with your tools connected. One node in place of n8n's AI Agent,
   Chat Model and Memory: pick the model, namespace and Chat ID in its settings.
 - **Trigger → AI Agent → Twigg Chat Model.** Keep n8n's AI Agent (and its output parsers, fallback
   model and other options) and swap only the model and memory.
 
-> Requires n8n 2.16 or later (the first release that ships `@n8n/ai-node-sdk`). Both nodes have been
+> Requires n8n 2.16 or later (the first release that ships `@n8n/ai-node-sdk`). Both ways have been
 > tested on n8n 2.16 and 2.44.
 
 ## Installation
@@ -28,9 +28,12 @@ URL at `https://api.twigg.ai` unless Twigg gave you another host.
 
 ## Nodes
 
-### Twigg AI Agent
+The package has two nodes: **Twigg**, an action node whose resources are **Agent**, **Chat** and
+**Model**, and the **Twigg Chat Model** sub-node.
 
-Use it where you would use n8n's AI Agent. It has one sub-node input, **Tool**: connect any n8n tool
+### Twigg → Agent
+
+The default resource of the Twigg node. Use it where you would use n8n's AI Agent. It has one sub-node input, **Tool**: connect any n8n tool
 (Calculator, HTTP Request, Code, Workflow, MCP Client, app tools). There is no Chat Model or Memory
 input; Twigg runs the model and keeps the conversation.
 
@@ -48,8 +51,8 @@ The output is `{ "output": "<reply>" }`, the same field n8n's AI Agent produces,
 Respond to Webhook or messaging node after it works unchanged. With a Chat Trigger in **Streaming**
 mode the reply is streamed as one piece once it is ready, because Twigg answers in one piece.
 
-The agent can also be a tool of another agent (n8n's AI Agent or another Twigg AI Agent): add
-**Twigg AI Agent Tool**, set its Prompt to something like `{{ $fromAI('question') }}`, and give it its
+The agent can also be a tool of another agent (n8n's AI Agent or another Twigg agent): add the
+**Twigg Tool** with the Agent resource, set its Prompt to something like `{{ $fromAI('question') }}`, and give it its
 own model, system message and Chat ID. In that form it answers with its own model and has no tools of
 its own.
 
@@ -57,7 +60,7 @@ When the model calls tools, the agent hands the calls to n8n, which runs the too
 in the execution with their own input and output), and sends the results back to Twigg under the same
 tool call ids. Each input item is its own conversation turn.
 
-To move a workflow over: add a Twigg AI Agent, connect the same trigger, tools and output, copy the
+To move a workflow over: add a Twigg node (Agent resource), connect the same trigger, tools and output, copy the
 system message, set the Chat ID to what the Memory node used as its session key, and delete the old
 AI Agent and Chat Model nodes.
 
@@ -115,13 +118,14 @@ replays (only the new message is sent) and logs a warning.
 - **Streaming.** The node works with the Agent's streaming mode but delivers each reply in one
   piece, because Twigg's replay-on-retry only exists for non-streaming turns.
 
-### Twigg (action node)
+### Twigg → Chat and Model
 
-Operations on the conversations the Twigg AI Agent and Twigg Chat Model keep, addressed by the same
+Operations on the conversations the Twigg agent and Twigg Chat Model keep, addressed by the same
 Chat ID.
 
 | Resource | Operation | Use it to |
 |---|---|---|
+| Agent | Send Message | Answer a message as an AI agent (above). |
 | Chat | Get | Look up the chat record (Twigg id, namespace, length, timestamps). |
 | Chat | Open | Create the chat before the first message, with a namespace and title. |
 | Chat | Get History | Read the stored conversation, oldest first, one item per part. |

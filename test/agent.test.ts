@@ -2,7 +2,7 @@ import type { EngineRequest, EngineResponse, IExecuteFunctions, INodeExecutionDa
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { TwiggAgent } from '../nodes/TwiggAgent/TwiggAgent.node';
+import { Twigg } from '../nodes/Twigg/Twigg.node';
 import type { CreateResponseRequest, ResponseBody } from '../nodes/shared/types';
 import { endTurnResponse, refusalResponse, toolUseResponse } from './fixtures/responses';
 
@@ -37,6 +37,8 @@ function harness({
 	const otherCalls: Array<{ method: string; url: string; body?: unknown }> = [];
 	const warnings: string[] = [];
 	const params: Record<string, unknown> = {
+		resource: 'agent',
+		operation: 'sendMessage',
 		model: 'claude-haiku-5-5',
 		systemMessage: 'Be brief.',
 		options,
@@ -50,7 +52,7 @@ function harness({
 			return params[name] ?? fallback;
 		},
 		getCredentials: async () => ({ apiKey: 'tw_test', baseUrl: 'https://api.twigg.ai' }),
-		getNode: () => ({ id: 'node-1', name: 'Twigg AI Agent' }),
+		getNode: () => ({ id: 'node-1', name: 'Twigg' }),
 		getExecutionId: () => 'exec-1',
 		getInputConnectionData: async (type: string) => (type === 'ai_memory' ? memory : tools.map((t) => t.tool)),
 		getParentNodes: () => tools.map((t) => ({ name: t.node, disabled: false })),
@@ -78,7 +80,7 @@ function harness({
 			},
 		},
 	} as unknown as IExecuteFunctions;
-	const node = new TwiggAgent();
+	const node = new Twigg();
 	return {
 		requests,
 		otherCalls,
@@ -109,7 +111,7 @@ const toolCall = (id: string, name: string, args: unknown): ResponseBody => ({
 	content: [{ type: 'tool_call', tool_use_id: id, name, arguments: args as Record<string, unknown> }],
 });
 
-describe('TwiggAgent', () => {
+describe('Twigg node: Agent', () => {
 	it('answers directly when the model needs no tools', async () => {
 		const { run, requests } = harness({ responses: [endTurnResponse] });
 		const out = (await run()) as INodeExecutionData[][];
@@ -277,7 +279,7 @@ describe('TwiggAgent', () => {
 	});
 });
 
-describe('TwiggAgent with Use External Memory', () => {
+describe('Twigg node: Agent with Use External Memory', () => {
 	const oldMemory = {
 		chatHistory: {
 			getMessages: async () => [

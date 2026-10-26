@@ -1,4 +1,5 @@
-import type { IExecuteFunctions, INodeExecutionData, NodeExecutionHint } from 'n8n-workflow';
+import type { IExecuteFunctions, INode, INodeExecutionData, INodeTypes, NodeExecutionHint } from 'n8n-workflow';
+import { NodeHelpers, Workflow } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
 import { Twigg, withoutMemorySuffix } from '../nodes/Twigg/Twigg.node';
@@ -85,7 +86,7 @@ describe('Twigg node: Import All', () => {
 		);
 		const out = await run();
 		expect(statuses(out)).toEqual(['a:failed', 'b:imported']);
-		expect(hints[0].message).toMatch(/1 of 2 chats were not imported\. See the error on each failed item/);
+		expect(hints[0].message).toMatch(/1 of 2 chats were not imported\. Each item that was not imported says why/);
 	});
 
 	it('says plainly when the API has no import endpoint yet', async () => {
@@ -107,5 +108,28 @@ describe('withoutMemorySuffix', () => {
 		const out = await run();
 		expect(calls[0].url).toMatch(/\/chats\/external\/web-1\/import$/);
 		expect(out[0].json).toMatchObject({ chat_id: 'web-1', memory_session_id: 'web-1__Postgres_Chat_Memory', status: 'imported' });
+	});
+});
+
+describe('Twigg node: inputs', () => {
+	/** Works out the node's inputs with n8n's own helper, the way the editor does, for the given parameters. */
+	const inputsFor = (parameters: INode['parameters']) => {
+		const twigg = new Twigg();
+		const node: INode = { id: 'node-1', name: 'Twigg', type: 'twigg', typeVersion: 2, position: [0, 0], parameters };
+		const nodeTypes = { getByName: () => twigg, getByNameAndVersion: () => twigg, getKnownTypes: () => ({}) } as INodeTypes;
+		const workflow = new Workflow({ nodes: [node], connections: {}, active: false, nodeTypes });
+		const inputs = NodeHelpers.getNodeInputs(workflow, node, twigg.description, { throwOnExpressionError: true });
+		return inputs.map((input) => (typeof input === 'string' ? input : input.type));
+	};
+
+	it('gives the agent a Tool input, and External Memory only while Use External Memory is on', () => {
+		expect(inputsFor({ resource: 'agent', operation: 'sendMessage', useExternalMemory: false })).toEqual(['main', 'ai_tool']);
+		expect(inputsFor({ resource: 'agent', operation: 'sendMessage', useExternalMemory: true })).toEqual(['main', 'ai_tool', 'ai_memory']);
+	});
+
+	it('gives Import All an External Memory input and every other operation only main', () => {
+		expect(inputsFor({ resource: 'chat', operation: 'importAll' })).toEqual(['main', 'ai_memory']);
+		expect(inputsFor({ resource: 'chat', operation: 'get', useExternalMemory: true })).toEqual(['main']);
+		expect(inputsFor({ resource: 'model', operation: 'getAll' })).toEqual(['main']);
 	});
 });

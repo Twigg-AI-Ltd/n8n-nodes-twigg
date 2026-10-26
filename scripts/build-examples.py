@@ -1,5 +1,5 @@
 """Builds the example workflows. Each scenario comes three ways that share the same trigger, prompt
-and tools: on the Twigg AI Agent (examples/twigg-agent), on n8n's AI Agent with the Twigg Chat Model
+and tools: on the Twigg node's Agent (examples/twigg-agent), on n8n's AI Agent with the Twigg Chat Model
 (examples/twigg), and classic: n8n's AI Agent with an OpenAI Chat Model and a Memory node
 (examples/without-twigg).
 
@@ -56,10 +56,10 @@ def twigg_model(position, chat_id, namespace, hash_id=False):
 
 
 def agent_node(variant, name, position, text, system, chat_id, namespace, hash_id=False):
-    """The agent: Twigg AI Agent for the twigg-agent variant, n8n's AI Agent otherwise."""
+    """The agent: the Twigg node's Agent for the twigg-agent variant, n8n's AI Agent otherwise."""
     if variant == "agent":
-        return node(name, f"{TWIGG_PREFIX}.twiggAgent", 1, position, {
-            "model": "claude-haiku-5-5", "text": text, "chatId": chat_id, "namespace": namespace,
+        return node(name, f"{TWIGG_PREFIX}.twigg", 2, position, {
+            "resource": "agent", "operation": "sendMessage", "model": "claude-haiku-5-5", "text": text, "chatId": chat_id, "namespace": namespace,
             "systemMessage": system, "options": {"hashChatId": True} if hash_id else {}})
     params = {"options": {"systemMessage": system}}
     if text != "={{ $json.chatInput }}":
@@ -67,7 +67,7 @@ def agent_node(variant, name, position, text, system, chat_id, namespace, hash_i
     return node(name, "@n8n/n8n-nodes-langchain.agent", 3.1, position, params)
 
 
-VARIANT_LABELS = {"agent": "Twigg AI Agent", "twigg": "Twigg Chat Model"}
+VARIANT_LABELS = {"agent": "Twigg Agent", "twigg": "Twigg Chat Model"}
 
 
 def openai_model(position):
@@ -200,8 +200,8 @@ def support_bot(variant):
 
     if variant == "agent":
         nodes.append(sticky("Note", (
-            "## Support bot on the Twigg AI Agent\n"
-            "**Chat Trigger → Twigg AI Agent**, with tools. No Chat Model, no Memory node.\n\n"
+            "## Support bot on the Twigg Agent\n"
+            "**Chat Trigger → Twigg (Agent)**, with tools. No Chat Model, no Memory node.\n\n"
             "1. Open **Support Agent**, add your Twigg API key and pick a model.\n"
             "2. Click **Open chat** on the trigger and talk to it. Try order 1042.\n\n"
             "Twigg runs the model and keeps each conversation (by the chat's `sessionId`), so it survives "
@@ -260,7 +260,7 @@ def lead_qualifier(variant):
 
     if variant == "agent":
         nodes.append(sticky("Note", (
-            "## Lead qualifier on the Twigg AI Agent\n"
+            "## Lead qualifier on the Twigg Agent\n"
             "Point your WhatsApp provider (Twilio, 360dialog, WhatsApp Cloud API) at this webhook, "
             "or test with:\n`POST {\"from\": \"+447700900123\", \"text\": \"Hi\"}`\n\n"
             "**Chat ID** is the sender's phone number, so each person is one conversation. "

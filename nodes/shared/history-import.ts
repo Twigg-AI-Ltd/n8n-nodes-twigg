@@ -3,7 +3,7 @@ import { TwiggApiError } from './errors';
 import type { ImportHistoryResponse, ImportPart, OpenChatRequest } from './types';
 
 /**
- * Moving a conversation out of an n8n Memory node into Twigg. Used by the Twigg AI Agent's
+ * Moving a conversation out of an n8n Memory node into Twigg. Used by the Twigg agent's
  * "Use External Memory" (once per chat, before its first message on Twigg) and in bulk by the Twigg
  * node's Import All. The old memory is only read, never changed, so a workflow can always switch back.
  *

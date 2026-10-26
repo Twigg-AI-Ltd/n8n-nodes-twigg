@@ -1,4 +1,6 @@
 import type {
+	EngineRequest,
+	EngineResponse,
 	IDataObject,
 	IExecuteFunctions,
 	INodeExecutionData,
@@ -7,11 +9,12 @@ import type {
 } from 'n8n-workflow';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
+import { agentProperties, executeAgent } from './agent';
 import { TwiggClient } from '../shared/client';
 import { TwiggApiError } from '../shared/errors';
 import { importFromMemory, isImportUnavailable, MAX_IMPORT_PARTS } from '../shared/history-import';
 import { chatTitleFor, resolveExternalId } from '../shared/ids';
-import { DEFAULT_NAMESPACE } from '../shared/models';
+import { DEFAULT_NAMESPACE, loadModelOptions } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
 import { toNodeError } from '../shared/node-errors';
 import type { HistoryPart } from '../shared/types';
@@ -29,14 +32,22 @@ export class Twigg implements INodeType {
 		name: 'twigg',
 		icon: { light: 'file:twigg.svg', dark: 'file:twigg.dark.svg' },
 		group: ['transform'],
-		version: 1,
-		subtitle: '={{ $parameter["operation"] + ": " + $parameter["resource"] }}',
-		description: 'Look up, read, import, reset or abort the conversations Twigg keeps for your agents',
+		// Version 2 added the Agent resource and made it the default.
+		version: [1, 2],
+		defaultVersion: 2,
+		subtitle: '={{ $parameter["resource"] === "agent" ? $parameter["model"] : $parameter["operation"] + ": " + $parameter["resource"] }}',
+		description: 'An AI agent whose model and memory are Twigg, and the operations on the conversations Twigg keeps for your agents',
 		defaults: {
 			name: 'Twigg',
 		},
-		// Import All reads from an n8n Memory node, so that operation gets an External Memory input.
-		inputs: `={{ $parameter.resource === 'chat' && $parameter.operation === 'importAll' ? ['main', { type: 'ai_memory', displayName: 'External Memory', required: true, maxConnections: 1 }] : ['main'] }}`,
+		// The agent takes tools, plus an External Memory input while "Use External Memory" is on.
+		// Import All reads from an n8n Memory node, so that operation gets an External Memory input too.
+		inputs: `={{ ((resource, operation, useExternalMemory) => {
+			const memory = { type: 'ai_memory', displayName: 'External Memory', required: true, maxConnections: 1 };
+			if (resource === 'agent') return ['main', { type: 'ai_tool', displayName: 'Tool', required: false }, ...(useExternalMemory ? [memory] : [])];
+			if (resource === 'chat' && operation === 'importAll') return ['main', memory];
+			return ['main'];
+		})($parameter.resource, $parameter.operation, $parameter.useExternalMemory) }}`,
 		outputs: [NodeConnectionTypes.Main],
 		usableAsTool: true,
 		credentials: [
@@ -56,7 +67,22 @@ export class Twigg implements INodeType {
 					{ name: 'Model', value: 'model' },
 				],
 				default: 'chat',
+				displayOptions: { show: { '@version': [1] } },
 			},
+			{
+				displayName: 'Resource',
+				name: 'resource',
+				type: 'options',
+				noDataExpression: true,
+				options: [
+					{ name: 'Agent', value: 'agent' },
+					{ name: 'Chat', value: 'chat' },
+					{ name: 'Model', value: 'model' },
+				],
+				default: 'agent',
+				displayOptions: { show: { '@version': [{ _cnd: { gte: 2 } }] } },
+			},
+			...agentProperties,
 			{
 				displayName: 'Operation',
 				name: 'operation',
@@ -135,7 +161,7 @@ export class Twigg implements INodeType {
 				default: '={{ $json.sessionId }}',
 				required: true,
 				displayOptions: { show: { resource: ['chat'] }, hide: { operation: ['importAll'] } },
-				description: 'The same Chat ID the Twigg AI Agent or Twigg Chat Model uses for this conversation',
+				description: 'The same Chat ID the agent or Twigg Chat Model uses for this conversation',
 			},
 			{
 				displayName: 'Chat ID',
@@ -145,7 +171,7 @@ export class Twigg implements INodeType {
 				required: true,
 				displayOptions: { show: { resource: ['chat'], operation: ['importAll'] } },
 				description:
-					'The Chat ID the conversation will have on Twigg: the value your Twigg AI Agent or Twigg Chat Model uses as Chat ID, usually the old session ID',
+					'The Chat ID the conversation will have on Twigg: the value your Twigg agent or Twigg Chat Model uses as Chat ID, usually the old session ID',
 			},
 			{
 				displayName: 'Remove Memory Node Suffix',
@@ -163,7 +189,7 @@ export class Twigg implements INodeType {
 				default: false,
 				displayOptions: { show: { resource: ['chat'] } },
 				description:
-					'Whether the chat ID is hashed before use. Must match the "Hash Chat ID" option on the Twigg Chat Model node.',
+					'Whether the chat ID is hashed before use. Must match the "Hash Chat ID" option of the agent or Twigg Chat Model that uses this chat.',
 			},
 			{
 				displayName: 'Namespace',
@@ -172,7 +198,7 @@ export class Twigg implements INodeType {
 				default: DEFAULT_NAMESPACE,
 				displayOptions: { show: { resource: ['chat'], operation: ['open', 'importAll'] } },
 				description:
-					'The namespace to create the chat in: the same Namespace your Twigg AI Agent or Twigg Chat Model uses',
+					'The namespace to create the chat in: the same Namespace your Twigg agent or Twigg Chat Model uses',
 			},
 			{
 				displayName: 'Title',
@@ -231,7 +257,18 @@ export class Twigg implements INodeType {
 		],
 	};
 
-	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+	methods = {
+		loadOptions: {
+			getModels: loadModelOptions,
+		},
+	};
+
+	async execute(this: IExecuteFunctions, response?: EngineResponse): Promise<INodeExecutionData[][] | EngineRequest> {
+		const resource = this.getNodeParameter('resource', 0) as string;
+		if (resource === 'agent') {
+			return await executeAgent.call(this, response);
+		}
+
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 		const credentials = await loadCredentials(this);
@@ -239,7 +276,6 @@ export class Twigg implements INodeType {
 			request: makeN8nRequest(this, credentials.baseUrl!, DEFAULT_TIMEOUT_MS),
 			log: (message, meta) => this.logger.debug(message, meta),
 		});
-		const resource = this.getNodeParameter('resource', 0) as string;
 		const operation = this.getNodeParameter('operation', 0) as string;
 
 		if (resource === 'chat' && operation === 'importAll') {
@@ -276,7 +312,10 @@ function chatIdFor(
 ): { id: string; raw: string; hashed: boolean } {
 	const value = ctx.getNodeParameter('chatId', itemIndex) as unknown;
 	if (value === '' || value === undefined || value === null) {
-		throw new NodeOperationError(ctx.getNode(), 'Chat ID is empty', { itemIndex });
+		throw new NodeOperationError(ctx.getNode(), 'Chat ID is empty', {
+			description: "Set 'Chat ID' to the conversation's ID, such as {{ $json.sessionId }} from a Chat Trigger.",
+			itemIndex,
+		});
 	}
 	const raw = adjust(String(value));
 	const hash = ctx.getNodeParameter('hashChatId', itemIndex, false) as boolean;
@@ -466,7 +505,7 @@ function importHints(
 		});
 	} else {
 		const notDone = counts.failed + counts.not_attempted;
-		const reason = stopped ? ` ${stopped.message}` : ' See the error on each failed item.';
+		const reason = stopped ? ` ${stopped.message}` : ' Each item that was not imported says why.';
 		hints.push({
 			type: 'warning',
 			location: 'outputPane',
