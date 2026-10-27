@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 (2026-10-27)
+
+- The Twigg node's codex `nodeVersion` is back to `"1.0"`, as n8n's verification review asked. It is
+  the codex schema version, not the node's version (still 2). No other changes.
+
 ## 0.2.0 (2026-10-26)
 
 Changes asked for in n8n's community node verification review.
