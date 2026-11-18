@@ -4,7 +4,7 @@ import { NodeConnectionTypes } from 'n8n-workflow';
 
 import { TwiggChatModel } from './TwiggChatModel';
 import { resolveChatId } from '../shared/chat-id';
-import { DEFAULT_PENDING_TOOL_CALL_WINDOW, DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
+import { DEFAULT_RETRY_POLICY, pendingWindowSeconds, TwiggClient } from '../shared/client';
 import { chatTitleFor, resolveExternalId } from '../shared/ids';
 import { DEFAULT_MODEL, DEFAULT_NAMESPACE, loadModelOptions } from '../shared/models';
 import { DEFAULT_TIMEOUT_MS, loadCredentials, makeN8nRequest } from '../shared/n8n-request';
@@ -150,10 +150,10 @@ export class LmChatTwigg implements INodeType {
 						displayName: 'Pending Tool Call Window (Seconds)',
 						name: 'pendingToolCallWindow',
 						type: 'number',
-						default: 15,
+						default: 30,
 						typeOptions: { minValue: 0, maxValue: 600 },
 						description:
-							'When a new message arrives while a tool from the previous message is still running, wait up to this long for the tool result instead of abandoning the tool call. 0 turns the wait off.',
+							'When a new message arrives while a tool from the previous message is still running, wait up to this long for the tool result before closing the tool call with an unknown outcome. A result that arrives later is still passed to the model, which then replies again. 0 turns the wait off.',
 					},
 					{
 						displayName: 'Reasoning Effort',
@@ -217,7 +217,6 @@ export class LmChatTwigg implements INodeType {
 			if (title !== undefined) chat.title = title;
 		}
 
-		const pendingWindow = options.pendingToolCallWindow ?? DEFAULT_PENDING_TOOL_CALL_WINDOW;
 		const chatModel = new TwiggChatModel(
 			client,
 			{
@@ -227,7 +226,7 @@ export class LmChatTwigg implements INodeType {
 				maxTokens: options.maxTokens !== undefined && options.maxTokens > 0 ? options.maxTokens : undefined,
 				reasoningEffort:
 					options.reasoningEffort && options.reasoningEffort !== 'default' ? options.reasoningEffort : undefined,
-				pendingToolCallWindowSeconds: pendingWindow > 0 ? pendingWindow : undefined,
+				pendingToolCallWindowSeconds: pendingWindowSeconds(options.pendingToolCallWindow),
 				onRefusal: options.onRefusal ?? 'error',
 				idempotencyScope: [this.getExecutionId(), this.getNode().id, itemIndex],
 			},

@@ -51,6 +51,12 @@ export type CreateResponseRequest = {
 	max_tokens?: number;
 	reasoning_effort?: ReasoningEffort;
 	wait_for_pending_tool_calls?: number;
+	/**
+	 * Where the tools run. `automation` protects open tool calls (30s unless
+	 * `wait_for_pending_tool_calls` says otherwise) and turns a tool result that arrives after its
+	 * call was closed into a note the model answers, instead of a 409.
+	 */
+	tool_execution?: 'direct' | 'automation';
 	idempotency_key?: string;
 	/** Retries the chat's latest failed run without appending input (send `input: []`). */
 	retry_of?: string;

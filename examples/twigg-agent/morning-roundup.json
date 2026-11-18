@@ -1,0 +1,325 @@
+{
+  "name": "Morning roundup that remembers (Twigg Agent)",
+  "nodes": [
+    {
+      "id": "9081a779-c671-4a42-b80c-66cbab866d97",
+      "name": "Every weekday at 7:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b6e2f8cf-2d71-42bc-8c3d-b916c9d0497e",
+      "name": "Watchlist",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "96016780-89fd-4f15-a91d-bc87a51aa180",
+              "name": "watchlist",
+              "type": "string",
+              "value": "- n8n latest release (JSON): https://api.github.com/repos/n8n-io/n8n/releases/latest\n- GitHub status (JSON): https://www.githubstatus.com/api/v2/summary.json\n- n8n pricing page: https://n8n.io/pricing/"
+            },
+            {
+              "id": "436e7f4b-6cff-4cf7-b88d-8f5563af776d",
+              "name": "sendTo",
+              "type": "string",
+              "value": "team@example.com"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "efa58c31-206d-481b-bc07-c77f4248203c",
+      "name": "Morning Watcher",
+      "type": "@twigg/n8n-nodes-twigg.twigg",
+      "typeVersion": 2,
+      "position": [
+        460,
+        0
+      ],
+      "parameters": {
+        "resource": "agent",
+        "operation": "sendMessage",
+        "model": "claude-haiku-5-5",
+        "text": "=Good morning. Today is {{ $now.toFormat('cccc d LLLL yyyy') }}.\n\nWatchlist:\n{{ $json.watchlist }}\n\nCheck every source and write today's roundup.",
+        "chatId": "morning-roundup",
+        "namespace": "morning-roundup",
+        "systemMessage": "You are the team's morning watcher. Every weekday morning you check the same sources and email the team a short roundup of what changed since you last looked.\n\nHow to work:\n1. Read every source in the watchlist with the tools: Read Web Page for normal pages, Read JSON API for URLs that return JSON.\n2. Compare what you see with what you recorded on earlier mornings in this conversation. Only report real changes: new prices, plans, versions, incidents, announcements, wording that changes meaning. Ignore layout, dates in footers, rotating testimonials and other noise.\n3. If a source cannot be read, say so in one line and move on.\n4. On the very first morning there is nothing to compare with: say that you are recording a baseline and summarise each source in one line.\n\nReply in exactly this format and nothing else:\n\nSUBJECT: <one line, under 70 characters, leading with the most important change, or \"No changes\" when nothing changed>\n\n## What changed\n<one bullet per change: source, what it was, what it is now, and why it matters in a few words. Write \"Nothing changed since <date of last check>.\" if there were no changes.>\n\n## Worth watching\n<at most 3 bullets on trends you notice across several mornings (for example a price that has moved twice this month). Leave this section out if there is nothing.>\n\n## Snapshot\n<one line per source with the key facts you will need to compare against tomorrow: prices, plan names, version numbers, open incidents. Keep it terse. This is your record, so be precise.>",
+        "options": {
+          "maxIterations": 20
+        }
+      }
+    },
+    {
+      "id": "412ec591-d7c2-4029-b2d3-1ee8adc9d182",
+      "name": "Read Web Page",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        240
+      ],
+      "parameters": {
+        "toolDescription": "Read the text of a normal web page (HTML). Use it for pricing pages, changelogs, blogs.",
+        "url": "={{ $fromAI('url', 'Full URL of the page to read', 'string') }}",
+        "optimizeResponse": true,
+        "responseType": "html",
+        "cssSelector": "body",
+        "onlyContent": true,
+        "elementsToOmit": "script, style, nav, footer, svg, noscript",
+        "truncateResponse": true,
+        "maxLength": 12000,
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "8c125337-07c1-41c4-8eb9-631ad70a1278",
+      "name": "Read JSON API",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        240
+      ],
+      "parameters": {
+        "toolDescription": "Fetch a URL that returns JSON, such as a status page API or the GitHub releases API. Returns the raw text, cut at 12000 characters.",
+        "url": "={{ $fromAI('url', 'Full URL of the JSON endpoint', 'string') }}",
+        "optimizeResponse": true,
+        "responseType": "text",
+        "truncateResponse": true,
+        "maxLength": 12000,
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "00272c4d-8f70-4273-96bc-3fb3218a1c80",
+      "name": "Split Subject and Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const text = String($json.output || '').trim();\nconst match = text.match(/^SUBJECT:\\s*(.+)$/m);\nconst subject = match ? match[1].trim() : 'Morning roundup';\nconst body = match ? text.replace(match[0], '').trim() : text;\nconst date = $now.toFormat('d LLL');\nreturn { json: { subject: `[${date}] ${subject}`, body } };\n"
+      }
+    },
+    {
+      "id": "726168c0-4a62-48f4-84fd-812f227f6803",
+      "name": "To HTML",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        980,
+        0
+      ],
+      "parameters": {
+        "mode": "markdownToHtml",
+        "markdown": "={{ $json.body }}",
+        "destinationKey": "html",
+        "options": {}
+      }
+    },
+    {
+      "id": "c6e471a9-d129-45f7-be51-049d35980acd",
+      "name": "Email the Roundup",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "fromEmail": "watcher@example.com",
+        "toEmail": "={{ $('Watchlist').item.json.sendTo }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "12a1455d-fa75-4a73-a9f3-9d1d72557f2a",
+      "name": "Ask the Watcher",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        520
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "webhookId": "faed5ec0-231d-48cf-94b3-58cfd239a14c"
+    },
+    {
+      "id": "2f679fb1-d0f8-45f7-a0d9-4f3700282930",
+      "name": "Watcher Q&A",
+      "type": "@twigg/n8n-nodes-twigg.twigg",
+      "typeVersion": 2,
+      "position": [
+        460,
+        520
+      ],
+      "parameters": {
+        "resource": "agent",
+        "operation": "sendMessage",
+        "model": "claude-sonnet-5-5",
+        "text": "={{ $json.chatInput }}",
+        "chatId": "morning-roundup",
+        "namespace": "morning-roundup",
+        "systemMessage": "You are the team's morning watcher. Every weekday morning you check a watchlist of web pages and APIs and email a roundup; this conversation holds every check you have done and every roundup you have written. Now a teammate is asking you about it.\n\nAnswer from your earlier observations in this conversation. Quote dates (\"on 3 November the Pro plan went from $20 to $25\"). If you never saw something, say so plainly rather than guessing. Keep answers short.",
+        "options": {}
+      }
+    },
+    {
+      "id": "937b2c89-1ff1-4bb6-ade3-7cff5a150de6",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -80
+      ],
+      "parameters": {
+        "content": "## Morning roundup with a memory\nEvery weekday at 7:00 the **Morning Watcher** reads the pages and APIs in **Watchlist**, compares them with what it saw on earlier mornings, and emails what changed.\n\nThere is no database and no diffing code: both Twigg agents share one fixed **Chat ID** (`morning-roundup`), so every check, tool result and roundup is kept on Twigg. Old tool output gets trimmed (set a retention policy, see the README), and each roundup ends with a **Snapshot** of key facts so the comparison keeps working.\n\n**Ask the Watcher** opens a chat on the same conversation, on a stronger model: *\"When did the Pro price last change?\"*\n\n**Setup:** Twigg API key, SMTP credential (or swap in Gmail / Outlook), your sources and recipient in **Watchlist**, and the workflow time zone in Settings.",
+        "width": 420,
+        "height": 520,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Every weekday at 7:00": {
+      "main": [
+        [
+          {
+            "node": "Watchlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Watchlist": {
+      "main": [
+        [
+          {
+            "node": "Morning Watcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Morning Watcher": {
+      "main": [
+        [
+          {
+            "node": "Split Subject and Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Subject and Body": {
+      "main": [
+        [
+          {
+            "node": "To HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To HTML": {
+      "main": [
+        [
+          {
+            "node": "Email the Roundup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask the Watcher": {
+      "main": [
+        [
+          {
+            "node": "Watcher Q&A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Web Page": {
+      "ai_tool": [
+        [
+          {
+            "node": "Morning Watcher",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read JSON API": {
+      "ai_tool": [
+        [
+          {
+            "node": "Morning Watcher",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

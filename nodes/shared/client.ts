@@ -52,10 +52,23 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
 };
 
 /**
- * How long a new message waits for an unanswered tool call from the previous one. In n8n a stopped
- * execution never delivers its result, so a long window only delays the reply.
+ * How long a new message waits for an unanswered tool call from the previous one. Long enough for
+ * a typical email, CRM or payment call; a stopped execution never delivers its result, so a long
+ * window only delays the reply. A result that arrives later still reaches the model as a note.
  */
-export const DEFAULT_PENDING_TOOL_CALL_WINDOW = 15;
+export const DEFAULT_PENDING_TOOL_CALL_WINDOW = 30;
+
+/** Every request from n8n: tools run in the workflow execution, not in the caller's own loop. */
+export const TOOL_EXECUTION = 'automation' as const;
+
+/**
+ * The `wait_for_pending_tool_calls` to send for the node option. The API's window is at least one
+ * second, so 0 ("turn the wait off") is sent as 1.
+ */
+export function pendingWindowSeconds(option: number | undefined): number {
+	const seconds = option ?? DEFAULT_PENDING_TOOL_CALL_WINDOW;
+	return Math.min(600, Math.max(1, Math.round(seconds)));
+}
 
 /** Provider failures (`502 external_service_error`) worth retrying, by `details.kind`. */
 const TRANSIENT_PROVIDER_FAILURES = new Set(['overloaded', 'unavailable', 'rate_limited', 'timeout', 'server_error']);

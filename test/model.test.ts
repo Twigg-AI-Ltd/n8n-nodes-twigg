@@ -63,6 +63,7 @@ describe('TwiggChatModel', () => {
 			system: 'Keep replies short.',
 			input: [{ type: 'prompt', text: 'Where is my order 1042?' }],
 			wait_for_pending_tool_calls: 60,
+			tool_execution: 'automation',
 			chat: { namespace: 'n8n-dev', title: 'wa:+447700900123' },
 		});
 		expect(request1.tools).toEqual([
