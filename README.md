@@ -97,7 +97,7 @@ replays (only the new message is sent) and logs a warning.
 | **Options → Maximum Number of Tokens** | Output ceiling per reply. |
 | **Options → Reasoning Effort** | Thinking budget on models that support it. |
 | **Options → On Refusal** | What happens when the model declines to answer. **Fail the Run** (default) stops with an error that includes the refusal, so a provider notice never reaches your users as a reply; **Return Refusal Text** passes it to the Agent instead. |
-| **Options → Pending Tool Call Window** | When a new message arrives while a tool from the previous message is still running, wait up to this long (default 15 s) for the tool result instead of abandoning the call. In n8n a stopped execution never delivers its result, so a long window only delays the next reply. |
+| **Options → Pending Tool Call Window** | When a new message arrives while a tool from the previous message is still running, wait up to this long (default 30 s) for the tool result before closing the call with an unknown outcome. A result that arrives after that is still passed to the model as a late result, and the model replies again with it. In n8n a stopped execution never delivers its result, so a long window only delays the next reply. |
 | **Options → Max Wait for a Busy Chat** | How long to keep waiting (default 120 s) when another reply is still being generated on the same chat, or Twigg asks to slow down. |
 | **Options → Timeout** | HTTP timeout. Twigg answers within about 280 s, so keep it above that. |
 

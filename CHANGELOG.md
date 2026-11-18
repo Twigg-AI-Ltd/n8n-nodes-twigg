@@ -7,6 +7,11 @@
 - The Agent resource and its parameters now show up in the node types n8n's MCP server and AI
   workflow builder generate. The v2 Resource property now comes before the v1 one, since the
   generator reads only the first. No change in the editor.
+- Both nodes now send `tool_execution: "automation"`. When a tool finishes after a newer message
+  has closed its call, its result is no longer lost with a 409: Twigg passes it to the model as a
+  late result and the model replies again, so the user learns that, for example, the email did go
+  out. Needs a Twigg API with `tool_execution` support.
+- The Pending Tool Call Window default goes from 15 to 30 seconds. 0 still turns the wait off.
 
 ## 0.2.1 (2026-10-27)
 

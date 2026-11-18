@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseRetryAfter, TwiggClient } from '../nodes/shared/client';
+import { parseRetryAfter, pendingWindowSeconds, TwiggClient } from '../nodes/shared/client';
 import type { HttpRequestSpec, HttpResponse } from '../nodes/shared/client';
 import { TwiggApiError } from '../nodes/shared/errors';
 import type { CreateResponseRequest } from '../nodes/shared/types';
@@ -230,5 +230,20 @@ describe('chat and model routes', () => {
 		const error = (await client.getChatByExternalId('x').catch((e: unknown) => e)) as TwiggApiError;
 		expect(error.status).toBe(404);
 		expect(error.code).toBe('not_found');
+	});
+});
+
+describe('pendingWindowSeconds', () => {
+	it('defaults to 30 seconds and keeps a set window', () => {
+		expect(pendingWindowSeconds(undefined)).toBe(30);
+		expect(pendingWindowSeconds(90)).toBe(90);
+	});
+
+	it('sends the API minimum for 0, since automation mode always has a window', () => {
+		expect(pendingWindowSeconds(0)).toBe(1);
+	});
+
+	it('keeps the window inside what the API accepts', () => {
+		expect(pendingWindowSeconds(1000)).toBe(600);
 	});
 });

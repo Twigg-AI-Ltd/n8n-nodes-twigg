@@ -12,7 +12,7 @@ import { collectTools, hasInput } from '../shared/agent-tools';
 import type { AgentItemState, ToolActionMetadata } from '../shared/agent-turns';
 import { readMetadata, replyText, toolCallActions, toolResultsFor } from '../shared/agent-turns';
 import { resolveChatId } from '../shared/chat-id';
-import { DEFAULT_PENDING_TOOL_CALL_WINDOW, DEFAULT_RETRY_POLICY, TwiggClient } from '../shared/client';
+import { DEFAULT_RETRY_POLICY, pendingWindowSeconds, TOOL_EXECUTION, TwiggClient } from '../shared/client';
 import { TwiggRefusalError } from '../shared/errors';
 import { chatIsEmpty, importFromMemory, isImportUnavailable } from '../shared/history-import';
 import { buildIdempotencyKey, chatTitleFor, resolveExternalId } from '../shared/ids';
@@ -196,10 +196,10 @@ export const agentProperties: INodeProperties[] = [
 				displayName: 'Pending Tool Call Window (Seconds)',
 				name: 'pendingToolCallWindow',
 				type: 'number',
-				default: 15,
+				default: 30,
 				typeOptions: { minValue: 0, maxValue: 600 },
 				description:
-					'When a new message arrives while a tool from the previous message is still running, wait up to this long for the tool result instead of abandoning the tool call. 0 turns the wait off.',
+					'When a new message arrives while a tool from the previous message is still running, wait up to this long for the tool result before closing the tool call with an unknown outcome. A result that arrives later is still passed to the model, which then replies again. 0 turns the wait off.',
 			},
 			{
 				displayName: 'Reasoning Effort',
@@ -391,7 +391,7 @@ async function runTurns(
 ): Promise<{ state: AgentItemState; actions: EngineRequest<ToolActionMetadata>['actions'] }> {
 	const { options, tools } = item;
 	const maxIterations = options.maxIterations ?? 10;
-	const pendingWindow = options.pendingToolCallWindow ?? DEFAULT_PENDING_TOOL_CALL_WINDOW;
+	const pendingWindow = pendingWindowSeconds(options.pendingToolCallWindow);
 
 	let turns = previous.turns;
 	let input = firstInput;
@@ -408,7 +408,8 @@ async function runTurns(
 		if (tools.length > 0) request.tools = tools.map((tool) => tool.definition);
 		if (options.maxTokens !== undefined && options.maxTokens > 0) request.max_tokens = options.maxTokens;
 		if (options.reasoningEffort && options.reasoningEffort !== 'default') request.reasoning_effort = options.reasoningEffort;
-		if (pendingWindow > 0) request.wait_for_pending_tool_calls = pendingWindow;
+		request.tool_execution = TOOL_EXECUTION;
+		request.wait_for_pending_tool_calls = pendingWindow;
 		if (Object.keys(item.chat).length > 0) request.chat = item.chat;
 		// Same execution, node, item and turn => same key => a retry replays the stored result.
 		request.idempotency_key = buildIdempotencyKey([

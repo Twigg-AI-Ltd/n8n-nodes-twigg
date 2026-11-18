@@ -7,7 +7,7 @@ import type {
 	Tool,
 } from '@n8n/ai-node-sdk';
 
-import type { TwiggClient } from '../shared/client';
+import { TOOL_EXECUTION, type TwiggClient } from '../shared/client';
 import { TwiggRefusalError } from '../shared/errors';
 import { buildIdempotencyKey } from '../shared/ids';
 import {
@@ -87,6 +87,7 @@ export class TwiggChatModel implements ChatModel {
 			model: this.settings.model,
 			input,
 			stream: false,
+			tool_execution: TOOL_EXECUTION,
 		};
 		if (system !== undefined) request.system = system;
 		if (tools.length > 0) request.tools = tools;
