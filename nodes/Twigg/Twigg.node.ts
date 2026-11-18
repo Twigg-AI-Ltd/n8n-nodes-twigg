@@ -36,7 +36,7 @@ export class Twigg implements INodeType {
 		version: [1, 2],
 		defaultVersion: 2,
 		subtitle: '={{ $parameter["resource"] === "agent" ? $parameter["model"] : $parameter["operation"] + ": " + $parameter["resource"] }}',
-		description: 'An AI agent whose model and memory are Twigg, and the operations on the conversations Twigg keeps for your agents',
+		description: 'AI agent with built-in memory. Connect tools, pick any model, no Memory node needed.',
 		defaults: {
 			name: 'Twigg',
 		},
@@ -57,18 +57,9 @@ export class Twigg implements INodeType {
 			},
 		],
 		properties: [
-			{
-				displayName: 'Resource',
-				name: 'resource',
-				type: 'options',
-				noDataExpression: true,
-				options: [
-					{ name: 'Chat', value: 'chat' },
-					{ name: 'Model', value: 'model' },
-				],
-				default: 'chat',
-				displayOptions: { show: { '@version': [1] } },
-			},
+			// The v2 Resource must come before the v1 one: n8n's Workflow SDK type generator
+			// (used by the MCP server and AI builder) reads only the first `resource` property,
+			// so with v1 first the Agent resource and its parameters vanish from the generated types.
 			{
 				displayName: 'Resource',
 				name: 'resource',
@@ -81,6 +72,18 @@ export class Twigg implements INodeType {
 				],
 				default: 'agent',
 				displayOptions: { show: { '@version': [{ _cnd: { gte: 2 } }] } },
+			},
+			{
+				displayName: 'Resource',
+				name: 'resource',
+				type: 'options',
+				noDataExpression: true,
+				options: [
+					{ name: 'Chat', value: 'chat' },
+					{ name: 'Model', value: 'model' },
+				],
+				default: 'chat',
+				displayOptions: { show: { '@version': [1] } },
 			},
 			...agentProperties,
 			{

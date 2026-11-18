@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- New wording for the Twigg node's description in the nodes panel, the README's opening and the
+  package description.
+- The Agent resource and its parameters now show up in the node types n8n's MCP server and AI
+  workflow builder generate. The v2 Resource property now comes before the v1 one, since the
+  generator reads only the first. No change in the editor.
+
 ## 0.2.1 (2026-10-27)
 
 - The Twigg node's codex `nodeVersion` is back to `"1.0"`, as n8n's verification review asked. It is

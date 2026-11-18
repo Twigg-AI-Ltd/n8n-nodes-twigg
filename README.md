@@ -1,9 +1,10 @@
 # @twigg/n8n-nodes-twigg
 
-AI agents for n8n whose model and memory are [Twigg](https://twigg.ai). Twigg keeps each
-conversation on its servers, fits it to the model's context window, trims old tool output and
-compacts long chats, and runs any of its models on the same history. No Memory node and no
-database: the conversation survives restarts, queue mode and scaling.
+**Memory for your n8n AI agents that just works.** [Twigg](https://twigg.ai) stores every
+conversation for you, so there's no Memory node and no database to set up, and chats survive
+restarts, updates and queue mode. Long conversations keep working: Twigg trims old tool output and
+summarises older messages so they always fit the model. Switch between any of its models without
+losing the history.
 
 Two ways to use it:
 
